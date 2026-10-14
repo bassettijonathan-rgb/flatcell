@@ -186,6 +186,72 @@ export const VIEWS = {
       }
     },
   },
+  m3: {
+    setup(root) {
+      root.innerHTML = `
+        <p class="chart-title" id="t-prot">Watched protein <small>· copies in this cell</small></p>
+        <canvas class="chart" id="c-prot" aria-label="Protein copies over time"></canvas>
+        <p class="chart-title">mRNAs <small>· each one is a burst of protein above</small></p>
+        <canvas class="chart short" id="c-mrna" aria-label="mRNA copies over time"></canvas>
+        <div class="legend" id="lg-mrna"></div>
+        <p class="chart-title">Proteins made per mRNA <small>· every gene, share of mRNAs</small></p>
+        <canvas class="chart short" id="c-burst" aria-label="Histogram of proteins made per mRNA"></canvas>
+        <div class="legend" id="lg-burst"></div>`;
+    },
+    reset(h) { h.rows = []; h.epoch = -1; },
+    update(stats, frame, h) {
+      if (stats.epoch !== h.epoch) { h.rows = []; h.epoch = stats.epoch; }
+      for (const r of stats.newRows) h.rows.push(r);
+      if (h.rows.length > 3000) h.rows.splice(0, h.rows.length - 3000);
+    },
+    readouts(stats) {
+      const w = stats.watch, b = stats.busy;
+      const half = stats.lifeMean * Math.LN2 / 60;
+      return [
+        readout(w.name, `${w.prot}`, `proteins · ${w.mrna} mRNA${w.mrna === 1 ? '' : 's'} now`),
+        readout('mRNAs in the cell', `${stats.mrnaNow}`, `syn3A average ${f2(stats.mrnaTarget)}`),
+        readout('mRNA half-life', stats.lifeN ? f2(half) : '…', `min · syn3A 2 min · ${stats.lifeN} decayed`),
+        readout('Proteins per mRNA', stats.burstN ? f2(stats.burstMean) : '…', `expected ${f2(stats.bMean)}`),
+        readout('Ribosomes translating', `${b.ribosome[0]} of ${b.ribosome[1]}`),
+        readout('Polymerases transcribing', `${b.rnap[0]} of ${b.rnap[1]}`),
+      ].join('');
+    },
+    draw(stats, frame, h, root) {
+      const R = h.rows;
+      const accent = cssVar('--accent'), hot = cssVar('--hot'), muted = cssVar('--muted');
+      root.querySelector('#t-prot').innerHTML = `${stats.watch.name} protein <small>· copies in this cell; steps up in bursts, drifts down as growth dilutes it</small>`;
+      if (R.length > 1) {
+        const xs = R.map((r) => r[0] / 60);
+        const x0 = xs[0], x1 = Math.max(xs[xs.length - 1], x0 + 5);
+        drawXY(root.querySelector('#c-prot'), {
+          xMin: x0, xMax: x1, yMax: Math.max(10, ...R.map((r) => r[3] * 1.15)), xLabel: 'cell time, min', yLabel: 'proteins',
+          series: [{ kind: 'steps', color: hot, xs, ys: R.map((r) => r[3]), width: 1.8 }],
+        });
+        drawXY(root.querySelector('#c-mrna'), {
+          xMin: x0, xMax: x1, yMax: Math.max(4, ...R.map((r) => r[1] + 1)), xLabel: 'cell time, min', yLabel: 'mRNAs',
+          series: [
+            { kind: 'steps', color: muted, xs, ys: R.map((r) => r[1]), width: 1.2 },
+            { kind: 'steps', color: hot, xs, ys: R.map((r) => r[2]), width: 2 },
+          ],
+        });
+        root.querySelector('#lg-mrna').innerHTML = `<span><i style="background:${hot}"></i>${stats.watch.name} mRNA</span><span><i style="background:${muted}"></i>all mRNAs</span>`;
+      }
+      const n = stats.hist.reduce((a, v) => a + v, 0);
+      if (n > 0) {
+        const bw = stats.bin;
+        const xs = stats.hist.map((v, k) => k * bw);
+        const ys = stats.hist.map((v) => v / n);
+        drawXY(root.querySelector('#c-burst'), {
+          xMin: 0, xMax: xs.length * bw, yMax: Math.max(...ys, ...stats.expected) * 1.15, xLabel: `proteins from one mRNA (last bar: ${(xs.length - 1) * bw}+)`, yLabel: 'share',
+          series: [
+            { kind: 'hist', color: accent, xs, ys, bw },
+            { kind: 'points', color: hot, xs: xs.map((x) => x + bw / 2), ys: stats.expected },
+          ],
+        });
+        root.querySelector('#lg-burst').innerHTML = `<span><i style="background:${accent}"></i>measured, ${n.toLocaleString('en-US')} mRNAs</span><span><i class="dot" style="background:${hot}"></i>translate-until-destroyed race (geometric), mean ${f2(stats.bMean)}</span>`;
+      }
+    },
+  },
 };
 
 const STEP_LABEL = { GLCpts: 'PTS', PGI: 'Pgi', PFK: 'PfkA', FBA: 'FbaA', TPI: 'TpiA', GAPD: 'GapDH', PGK: 'Pgk', PGM: 'Pgm', ENO: 'Eno', PYK: 'Pyk', LDH: 'Ldh' };
