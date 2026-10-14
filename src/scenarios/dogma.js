@@ -298,7 +298,7 @@ export function setupExpression(world, { boost, share, sites, beads, spDNA, make
         const m = placeNear(sp.mrna, pos[i]);
         ex.mrnaMade[k]++;
         ex.nt += rows[k].nt;
-        if (m >= 0) { aux[m] = k; prog[m] = 0; ex.mrnaNow[k]++; }
+        if (m >= 0) { aux[m] = k; prog[m] = 0; ex.mrnaNow[k]++; ex.onMRNA?.(k, m); }
       } else if (kd === sp.ribosome && state[i] > 0) {
         if (--prog[i] > 0) continue;
         const k = state[i] - 1;
@@ -360,6 +360,7 @@ export function setupExpression(world, { boost, share, sites, beads, spDNA, make
         ex.lifetimes.push(life);
         if (ex.lifetimes.length > 4000) ex.lifetimes.shift();
         ex.mrnaNow[k]--;
+        ex.onDecay?.(k, life, prog[i]);
         world.kill(i);
       }
     }

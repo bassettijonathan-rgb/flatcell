@@ -31,6 +31,9 @@ const app = {
   dirtyBg: true,
   view: null,
   waiting: false,
+  showLabels: true,
+  moments: [],
+  lastTime: 0,
 };
 
 function hexToRgb(hex) {
@@ -77,6 +80,11 @@ function onInfo(msg) {
   renderLayers();
   renderControls();
   renderGene(info.gene);
+  renderKey();
+  renderTips();
+  // A new or rebuilt world starts its own story.
+  app.moments = [];
+  renderMoments();
   const view = VIEWS[info.id];
   app.history = {};
   view.reset(app.history);
@@ -91,6 +99,14 @@ function onFrame(f) {
   app.waiting = false;
   if (f.sites) { app.sites = f.sites; app.dirtyBg = true; }
   if (f.heat || app.frame?.heat) app.dirtyBg = true;
+  if (f.time < app.lastTime) { app.moments = []; renderMoments(); }
+  app.lastTime = f.time;
+  const ev = f.stats?.guide?.events;
+  if (ev?.length) {
+    app.moments.unshift(...ev.slice().reverse());
+    app.moments.length = Math.min(app.moments.length, 6);
+    renderMoments();
+  }
   app.frame = f;
   const view = VIEWS[app.info.id];
   view.update(f.stats, f, app.history);
@@ -120,6 +136,7 @@ function frameLoop(t) {
     const box = f.viewBox || [0, 0, f.W, f.H];
     app.view = fitView(canvas.clientWidth, canvas.clientHeight, [box[0] - 0.5, box[1] - 0.5, box[2] + 0.5, box[3] + 0.5]);
     app.renderer.draw({ view: app.view, parts: f.parts, nParts: f.nParts, trail: f.follow?.trail, clear: th.bg });
+    drawLabels(app.showLabels ? f.stats?.guide?.labels : null);
     if (t - lastPanel > 200) {
       lastPanel = t;
       updatePanels(f);
@@ -161,8 +178,121 @@ function updatePanels(f) {
   $('readouts').innerHTML = view.readouts(f.stats, f);
   view.draw(f.stats, f, app.history, $('charts'));
   renderFollow(f);
+  const now = f.stats?.guide?.now;
+  if (now && $('guide-now').textContent !== now) $('guide-now').textContent = now;
   $('run').textContent = f.running ? 'Pause' : 'Run';
 }
+
+// ---------------------------------------------------------------- explanations
+// Names on the view, drawn on a transparent canvas over the simulation.
+const labelCanvas = $('labels');
+function drawLabels(labels) {
+  const dpr = window.devicePixelRatio || 1;
+  const cw = labelCanvas.clientWidth, ch = labelCanvas.clientHeight;
+  if (labelCanvas.width !== Math.round(cw * dpr) || labelCanvas.height !== Math.round(ch * dpr)) {
+    labelCanvas.width = Math.round(cw * dpr);
+    labelCanvas.height = Math.round(ch * dpr);
+  }
+  const g = labelCanvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, cw, ch);
+  if (!labels?.length || !app.view) return;
+  const { pps, ox, oy } = app.view;
+  const ink = cssVar('--ink'), paper = cssVar('--surface'), ring = cssVar('--hot');
+  const small = cw < 480;
+  g.font = `600 ${small ? 11 : 12}px ${cssVar('--font-body')}`;
+  g.textBaseline = 'middle';
+  const placed = [];
+  const h = small ? 18 : 20, pad = 6;
+  for (const l of labels) {
+    const x = ox + pps * l.x, y = oy + pps * l.y;
+    if (x < 0 || y < 0 || x > cw || y > ch) continue;
+    const r = Math.max(5, pps * 1.2);
+    g.strokeStyle = ring; g.lineWidth = 2;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke();
+    const w = g.measureText(l.text).width + pad * 2;
+    // Above-right of the particle, flipped at the edges, nudged down past earlier labels.
+    let bx = x + r + 8, by = y - r - h - 4;
+    if (bx + w > cw - 4) bx = x - r - 8 - w;
+    bx = Math.max(4, Math.min(bx, cw - w - 4));
+    if (by < 4) by = y + r + 4;
+    for (let k = 0; k < 6 && placed.some((p) => bx < p.x + p.w && bx + w > p.x && by < p.y + h + 2 && by + h + 2 > p.y); k++) by += h + 4;
+    by = Math.min(by, ch - h - 4);
+    placed.push({ x: bx, y: by, w });
+    g.beginPath();
+    g.moveTo(x + (bx + w / 2 > x ? r : -r) * 0.7, y + (by > y ? r : -r) * 0.7);
+    g.lineTo(bx + w / 2 > x ? bx : bx + w, by + h / 2);
+    g.stroke();
+    g.globalAlpha = 0.92;
+    g.fillStyle = paper;
+    g.beginPath(); g.roundRect(bx, by, w, h, 5); g.fill();
+    g.globalAlpha = 1;
+    g.strokeStyle = ring; g.lineWidth = 1;
+    g.stroke();
+    g.fillStyle = ink;
+    g.fillText(l.text, bx + pad, by + h / 2 + 0.5);
+  }
+}
+
+function renderMoments() {
+  $('moments').innerHTML = app.moments.map((m) =>
+    `<li><time>${fmtDuration(m.t)}</time><span>${esc(m.text)}</span></li>`).join('');
+}
+
+function renderKey() {
+  const info = app.info;
+  $('key-list').innerHTML = info.layers.filter((l) => l.about).map((l) => {
+    let sw = '<span class="sw heat"></span>';
+    if (l.kind === 'species') {
+      const sp = info.species.find((s) => (l.swatch ? s.name === l.swatch : 'sp:' + s.name === l.id));
+      const c = sp ? sp.color.map((v) => Math.round(v * 255)).join(',') : '128,128,128';
+      sw = `<span class="sw" style="background:rgb(${c})"></span>`;
+    }
+    return `<li>${sw}<span><b>${esc(l.label)}</b> ${esc(l.about)}</span></li>`;
+  }).join('');
+  $('key-howto').textContent = info.howto || '';
+}
+
+// Move a control on the page to a value a tip set, so the panel shows it.
+function showControl(c, v) {
+  const el = $(`ctl-${app.info.id}-${c.id}`);
+  if (!el) return;
+  if (c.type === 'select') el.value = v;
+  else {
+    el.value = c.type === 'log' ? (Math.log(v / c.min) / Math.log(c.max / c.min)) * 1000 : v;
+    const out = $(`${el.id}-out`);
+    if (out) out.textContent = ctlDisplay(c, v);
+  }
+}
+
+function renderTips() {
+  const tips = app.info.tips || [];
+  $('tips').innerHTML = tips.length
+    ? `<p class="eyebrow">Try this</p><div class="tip-list">${tips.map((t, k) =>
+      (t.set || t.action
+        ? `<button class="tip" data-k="${k}"><b>${esc(t.label)}</b><span>${esc(t.detail)}</span></button>`
+        : `<div class="tip note"><b>${esc(t.label)}</b><span>${esc(t.detail)}</span></div>`)).join('')}</div>`
+    : '';
+  for (const b of $('tips').querySelectorAll('button.tip')) {
+    const t = tips[+b.dataset.k];
+    b.onclick = () => {
+      for (const [id, v] of t.set || []) {
+        const c = app.info.controls.find((x) => x.id === id);
+        if (c) showControl(c, v);
+        sim.send({ type: 'control', id, value: v });
+      }
+      if (t.action) sim.send({ type: 'action', id: t.action });
+      if (!app.running && (t.set || t.action)) { app.running = true; sim.send({ type: 'run', running: true }); }
+    };
+  }
+}
+
+$('labelsBtn').onclick = () => {
+  app.showLabels = !app.showLabels;
+  $('labelsBtn').setAttribute('aria-pressed', String(app.showLabels));
+  $('labelsBtn').textContent = app.showLabels ? 'Hide labels' : 'Show labels';
+  if (!app.showLabels) drawLabels(null);
+};
 
 // ---------------------------------------------------------------- panels
 function renderTabs() {

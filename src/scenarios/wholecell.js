@@ -223,6 +223,9 @@ export function createWholeCell(options = {}) {
     copyUid: new Int32Array(DNA_BEADS),
   };
   const ring = { licensed: false, members: [], at: -1 };
+  // Cell-cycle moments for the page, in cell seconds.
+  const log = [];
+  const note = (text) => log.push({ t: world.time * B, text });
 
   const nbr = [0, 1, -1, W, -W];
   const buf = new Int32Array(4);
@@ -262,13 +265,17 @@ export function createWholeCell(options = {}) {
     const ori = rep.chrom[0];
     if (!rep.started) {
       const a = contactWith(world.pos[ori], SP.dnaA, true);
-      if (a >= 0 && rng.next() < pInit) { rep.started = true; rep.initAt = world.time * B; }
+      if (a >= 0 && rng.next() < pInit) {
+        rep.started = true; rep.initAt = world.time * B;
+        note('DnaA found the origin of replication and opened it.');
+      }
     } else if (rep.forks.length < 2) {
       const r = contactWith(world.pos[ori], SP.rep, true);
       if (r >= 0 && rng.next() < pLoad) {
         const cw = rep.forks.length === 0;
         world.frozen[r] = 1; world.state[r] = 1;
         rep.forks.push({ i: r, j: cw ? 0 : DNA_BEADS - 1, dir: cw ? 1 : -1, last: cw ? DNA_BEADS / 2 - 1 : DNA_BEADS / 2, prog: stepsPerBead, done: false });
+        note(cw ? 'A replisome reached the origin: the first replication fork starts copying.' : 'A second replisome arrived: the other fork copies the opposite way round.');
       }
     }
     for (const f of rep.forks) {
@@ -286,7 +293,10 @@ export function createWholeCell(options = {}) {
       if (f.j === f.last) {
         f.done = true;
         world.frozen[f.i] = 0; world.state[f.i] = 0;
-        if (rep.forks.length === 2 && rep.forks.every((x) => x.done)) { rep.done = true; rep.doneAt = world.time * B; }
+        if (rep.forks.length === 2 && rep.forks.every((x) => x.done)) {
+          rep.done = true; rep.doneAt = world.time * B;
+          note(`The forks met: the whole chromosome is copied, ${Math.round((rep.doneAt - rep.initAt) / 60)} min after it began.`);
+        }
       } else {
         f.j += f.dir;
         f.prog = stepsPerBead;
@@ -320,10 +330,12 @@ export function createWholeCell(options = {}) {
     if (ev !== cell.lipidEvents) { cell.lipids += ev - cell.lipidEvents; cell.lipidEvents = ev; }
 
     // ---- Z ring
+    if (!cell.doubled && cell.area >= 2 * A0) { cell.doubled = true; note('The cell has made enough lipid to double its area.'); }
     if (!ring.licensed && rep.done && cell.area >= 2 * A0 && segregated()) {
       ring.licensed = true;
       ring.at = world.time * B;
       cell.phase = 'dividing';
+      note('DNA copied and pulled apart, area doubled: FtsZ starts gathering into a ring at midcell.');
     }
     if (ring.licensed) {
       // FtsZ that reaches the membrane at midcell joins the ring.
@@ -337,6 +349,7 @@ export function createWholeCell(options = {}) {
             const z = buf[k];
             if (world.kind[z] === SP.ftsZ && world.state[z] === 0 && rng.next() < pRing) {
               world.state[z] = 1; world.frozen[z] = 1; ring.members.push(z);
+              if (ring.members.length === 1) note('The first FtsZ joined the ring; the membrane starts to pinch in.');
             }
           }
         }
@@ -417,6 +430,9 @@ export function createWholeCell(options = {}) {
     painted = { L: shape.L, neck: Infinity };
     cell.area = areaOf(world.site);
     cell.divisions.push({ t, cycleTime: t - cell.born, partition: part, cycle: cell.cycle });
+    const rb = part.ribosome || [0, 0];
+    note(`Divided after ${Math.round((t - cell.born) / 60)} min. The right-hand daughter leaves; this one keeps ${rb[0]} of the ${rb[0] + rb[1]} ribosomes.`);
+    cell.doubled = false;
     cell.cycle++;
     cell.born = t;
     cell.phase = 'growing';
@@ -465,7 +481,7 @@ export function createWholeCell(options = {}) {
   }
 
   // ---------------------------------------------------------------- history
-  const sc = { id: 'm4', world, opts, ex, cell, rep, ring, shape, F, SP, A0, share, boost: B, spDNA, LIPIDS_PER_SITE };
+  const sc = { id: 'm4', world, opts, ex, cell, rep, ring, shape, F, SP, A0, share, boost: B, spDNA, LIPIDS_PER_SITE, log };
   sc.history = [];
   sc.sampled = 0;
   const every = Math.max(1, Math.round(SAMPLE_S / B / DT));

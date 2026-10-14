@@ -35,6 +35,18 @@ python3 tools/check_syn3a.py DATA_DIR  # checks src/data/syn3a.js against the so
 `?renderer=webgpu|webgl|canvas` forces a drawing backend. The page opens on the
 newest milestone; `#m1`, `#m2` … in the link open a specific one.
 
+### Reading the page
+
+Every milestone explains itself while it runs. Under the view, **What's
+happening** says in a sentence or two what the simulation is doing right now,
+with the latest notable moments (an origin opening, a bottleneck moving, an
+mRNA being destroyed) listed beneath it with their times. Labels on the view
+point at the particles those sentences talk about; **Hide labels** turns them
+off. In the side panel, **What the dots are** is a key to every colour, and
+**Try this** buttons change the settings to show one effect at a time. Each
+scenario adapter supplies these as `info().layers[].about`, `info().howto`,
+`info().tips` and `stats().guide`.
+
 ## How the model works
 
 **Space.** The cell is a slab one site thick: a square lattice of 10 nm sites,

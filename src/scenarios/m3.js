@@ -2,6 +2,7 @@
 
 import { createDogma, DOGMA_DEFAULTS } from './dogma.js';
 import { CELL } from '../data/syn3a.js';
+import { labelAt, firstOf, feed, num, HOW_TO_READ } from './guide.js';
 
 const BIN = 3;          // proteins per histogram bin
 const NBINS = 16;       // last bin collects everything above
@@ -34,6 +35,21 @@ export const M3 = {
     let sent = 0, epoch = sc.epoch;
 
     const watchK = () => ex.idx[opts.watch] ?? ex.idx.gapDH;
+    // Moments worth telling: the watched gene's mRNAs appearing and going.
+    const moments = feed();
+    let decays = 0, made = 0, shown = 0;
+    // The first few of other genes too, so there is something to read straight away.
+    ex.onMRNA = (k) => {
+      made++;
+      if (k === watchK()) moments.push(w.time * sc.boost, `RNA polymerase finished copying the ${rows[k].name} gene: a new ${rows[k].name} mRNA. Ribosomes that bump into it will make a burst of ${rows[k].name}.`);
+      else if (shown < 3 && rows[k].id !== 'other' && ++shown) moments.push(w.time * sc.boost, `A new ${rows[k].name} mRNA, copied from its gene by RNA polymerase.`);
+      else if (made % 100 === 0) moments.push(w.time * sc.boost, `${made} mRNAs made so far across all genes.`);
+    };
+    ex.onDecay = (k, life, made) => {
+      decays++;
+      if (k === watchK() || (decays <= 2 && rows[k].id !== 'other')) moments.push(w.time * sc.boost, `A degradosome destroyed a ${rows[k].name} mRNA after ${num(life / 60)} min; it had started ${made} ${made === 1 ? 'protein' : 'proteins'}.`);
+      else if (decays % 100 === 0) moments.push(w.time * sc.boost, `${decays} mRNAs destroyed so far, each after making ${num(ex.burstSum / ex.burstN)} proteins on average.`);
+    };
     const machineSp = new Set([ex.sp.rnap, ex.sp.ribosome, ex.sp.degradosome]);
 
     const a = {
@@ -58,14 +74,14 @@ export const M3 = {
           species,
           fields: [],
           layers: [
-            { id: 'sp:dna', label: 'Chromosome', kind: 'species', on: true },
-            { id: 'sp:rnap', label: 'RNA polymerase', kind: 'species', on: true },
-            { id: 'sp:mrna', label: 'mRNA', kind: 'species', on: true },
-            { id: 'sp:ribosome', label: 'Ribosomes', kind: 'species', on: true },
-            { id: 'sp:degradosome', label: 'Degradosomes', kind: 'species', on: true },
-            ...(machineSp.has(watchSp) ? [] : [{ id: 'sp:' + w.species[watchSp].name, label: `${watched.name} (watched)`, kind: 'species', on: true }]),
-            { id: 'grp:named', label: 'Other named proteins', kind: 'species', species: productNames, swatch: 'p:' + (rows.find((g, j) => j !== k && g.role === 'glycolysis')?.id || 'gapDH'), on: true },
-            { id: 'sp:other', label: 'Rest of the proteome', kind: 'species', on: false },
+            { id: 'sp:dna', label: 'Chromosome', kind: 'species', on: true, about: 'The chromosome, 54 beads of about 10 kbp each, held still in the middle of the cell. Each gene sits on one bead.' },
+            { id: 'sp:rnap', label: 'RNA polymerase', kind: 'species', on: true, about: 'RNA polymerase. When it bumps into a gene’s bead it may start copying the gene into mRNA (25 letters a second); it stays there until done.' },
+            { id: 'sp:mrna', label: 'mRNA', kind: 'species', on: true, about: 'A messenger RNA, the working copy of one gene. It drifts away from the chromosome; bright centre: ribosomes are reading it.' },
+            { id: 'sp:ribosome', label: 'Ribosomes', kind: 'species', on: true, about: 'Ribosomes, the protein factories. One that bumps into an mRNA may latch on and make one protein (12 amino acids a second).' },
+            { id: 'sp:degradosome', label: 'Degradosomes', kind: 'species', on: true, about: 'RNase J degradosomes. One that bumps into an mRNA may destroy it, which ends that mRNA’s burst of protein.' },
+            ...(machineSp.has(watchSp) ? [] : [{ id: 'sp:' + w.species[watchSp].name, label: `${watched.name} (watched)`, kind: 'species', on: true, about: `${watched.name} proteins, the gene you are watching, drawn in orange. New ones appear next to the ribosome that made them.` }]),
+            { id: 'grp:named', label: 'Other named proteins', kind: 'species', species: productNames, about: 'Proteins of the other modelled genes (glycolysis, transporters, lipid and division enzymes), coloured by their job.', swatch: 'p:' + (rows.find((g, j) => j !== k && g.role === 'glycolysis')?.id || 'gapDH'), on: true },
+            { id: 'sp:other', label: 'Rest of the proteome', kind: 'species', on: false, about: 'The other ~430 genes’ proteins, five to a dot. Hidden by default to keep the view clear.' },
           ],
           controls: [
             { id: 'watch', label: 'Watch gene', type: 'select', value: rows[k].id,
@@ -76,6 +92,12 @@ export const M3 = {
           actions: [],
           gene: genes[rows[k].id],
           genes,
+          howto: HOW_TO_READ,
+          tips: [
+            { label: 'Watch FtsZ', detail: 'A rarer mRNA: FtsZ comes in fewer, bigger steps. The charts restart for the new gene.', set: [['watch', 'ftsZ']] },
+            { label: 'Quarter the ribosomes', detail: 'Fewer ribosomes catch each mRNA less often, so bursts shrink, and naked mRNAs are destroyed sooner.', set: [['ribosomes', 0.25]] },
+            { label: 'More degradosomes', detail: 'Four times the degradosomes: mRNAs last about half a minute and bursts drop to a few proteins.', set: [['degradosomes', 4]] },
+          ],
           clock: { dt: w.dt, boost: sc.boost, unit: 'cell time' },
         };
       },
@@ -115,7 +137,28 @@ export const M3 = {
         const fresh = Math.min(sc.history.length, sc.sampled - sent);
         const newRows = sc.history.slice(sc.history.length - fresh);
         sent = sc.sampled;
+        // What is happening, in words, and labels for the view.
+        const g = rows[k];
+        const mid = sc.beads[Math.floor(sc.beads.length / 2)];
+        let wm = -1, bm = -1, br = -1;
+        for (let i = 0; i < w.cap; i++) {
+          if (!w.alive[i]) continue;
+          if (w.kind[i] === ex.sp.mrna) { if (w.aux[i] === k && wm < 0) wm = i; if (w.state[i] > 0 && bm < 0) bm = i; }
+          else if (w.kind[i] === ex.sp.ribosome && w.state[i] > 0 && br < 0) br = i;
+        }
+        const every = 1 / (g.mSlab * g.kDeg) / 60;
+        let now = `${mrnaNow} mRNA${mrnaNow === 1 ? '' : 's'} in the cell right now, and ${busy.ribosome[0]} of ${busy.ribosome[1]} ribosomes are making a protein. `;
+        now += ex.mrnaNow[k] > 0
+          ? `A ${g.name} mRNA exists: each ribosome that bumps into it makes one ${g.name}, until a degradosome finds it. Expect about ${num(g.burst)} new ${g.name} in this burst.`
+          : `There is no ${g.name} mRNA at the moment, so no ${g.name} is being made and its count drifts down as the cell grows. A new one comes along about every ${num(every)} min of cell time.`;
+        const labels = [
+          labelAt(w, mid, 'chromosome'),
+          wm >= 0 ? labelAt(w, wm, `${g.name} mRNA`) : bm >= 0 ? labelAt(w, bm, 'mRNA being translated') : null,
+          br >= 0 && (wm < 0 || w.link[br] !== wm) ? labelAt(w, br, 'ribosome at work') : null,
+          labelAt(w, firstOf(w, ex.sp.degradosome), 'degradosome'),
+        ].filter(Boolean);
         return {
+          guide: { now, events: moments.take(), labels },
           watch: { id: rows[k].id, name: rows[k].name, mrna: ex.mrnaNow[k], prot: ex.protNow[k], made: ex.protMade[k], start: ex.counts[k], burst: rows[k].burst },
           epoch,
           newRows,

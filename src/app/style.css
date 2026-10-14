@@ -59,13 +59,15 @@ button, input, select { font: inherit; color: inherit; }
 
 .stage { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; max-width: 1280px; margin: 0 auto; align-items: start; }
 @media (max-width: 860px) { .stage { grid-template-columns: minmax(0, 1fr); } }
-.viewer { position: sticky; top: env(safe-area-inset-top, 0px); display: grid; gap: 10px; min-width: 0; }
-@media (max-width: 860px) { .viewer { position: static; } }
+.viewer { display: grid; gap: 10px; min-width: 0; }
+/* Keep the view in sight while the panels scroll, when the screen is tall enough to hold it all. */
+@media (min-width: 861px) and (min-height: 980px) { .viewer { position: sticky; top: env(safe-area-inset-top, 0px); } }
 
 .scope {
   position: relative; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius);
   overflow: hidden; aspect-ratio: 4 / 3; max-width: 100%;
 }
+.scope canvas.labels { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
 .scope canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: manipulation; }
 .hud {
   position: absolute; left: 10px; bottom: 8px; right: 10px; display: flex; justify-content: space-between; gap: 8px;
@@ -148,3 +150,40 @@ button, input, select { font: inherit; color: inherit; }
 .divlog table { border-collapse: collapse; width: 100%; font: 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
 .divlog th, .divlog td { text-align: left; padding: 4px 10px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .divlog th { color: var(--muted); font-weight: 500; }
+
+/* Explanations: live narration under the view, a key to the dots, tips to try. */
+.guide { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 10px 14px 12px; min-width: 0; }
+.guide-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.guide .eyebrow { font: 500 10.5px/1 var(--font-data); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0; }
+.guide-now { margin: 0; font-size: 14px; line-height: 1.5; max-width: 72ch; }
+.linkish { background: none; border: 0; padding: 2px 0; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; }
+.linkish:hover { text-decoration: underline; }
+.moments { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 4px; }
+.moments:empty { display: none; }
+.moments li { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 8px; font-size: 12.5px; color: var(--muted); }
+.moments li:first-child { color: var(--ink); }
+.moments time { font: 500 11.5px/1.6 var(--font-data); color: var(--hot); font-variant-numeric: tabular-nums; }
+
+.key { margin: 4px 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.key summary { cursor: pointer; padding: 7px 10px; font-weight: 600; font-size: 13px; }
+.key[open] summary { border-bottom: 1px solid var(--line); }
+.key-list { list-style: none; margin: 0; padding: 8px 10px 0; display: grid; gap: 7px; }
+.key-list li { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 8px; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.key-list b { color: var(--ink); font-weight: 600; }
+.key-list .sw { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; }
+.key-list .sw.heat { border-radius: 2px; background: linear-gradient(90deg, #335c85, #2c8f85, #8cc75c, #fae04d); }
+.panel .key-howto { margin: 8px 10px 10px; font-size: 12px; }
+
+.tips { margin-top: 14px; }
+.tips:empty { display: none; }
+.tips .eyebrow { margin-bottom: 6px; }
+.tip-list { display: grid; gap: 6px; }
+.tip {
+  display: grid; gap: 2px; text-align: left; width: 100%; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); font-size: 12.5px; color: var(--muted); line-height: 1.4;
+}
+button.tip { cursor: pointer; }
+button.tip:hover { border-color: var(--accent); }
+.tip b { color: var(--ink); font-size: 13px; }
+button.tip b::after { content: " →"; color: var(--accent); }
+.tip.note { border-style: dashed; }
