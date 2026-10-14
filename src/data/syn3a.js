@@ -76,12 +76,14 @@ export const REACTIONS = {
 // stand for a complex list every locus they lump together; `copies` is the
 // measured copy number of the complex (or of its best-measured subunit).
 // `aa` is the total length the ribosome must translate to make one.
+// `parts` is how many genes a complex is made from; each of its mRNAs makes
+// one part, and `mrna` sums the mRNAs of every part (Thornburg et al. 2022).
 // `rate` is the row's characteristic rate with its unit.
 export const GENES = [
   // Uptake
-  { id: 'ptsG', loci: ['JCVISYN3A_0779', '0233', '0694', '0234'], start: 460467, name: 'PtsG', product: 'PTS glucose transporter (EIICB, with EI, HPr, EIIA)', role: 'uptake', aa: 1561, copies: 831, mrna: 1.287, rxn: 'GLCpts', membrane: true, rate: '3122 /s (kcat)' },
-  { id: 'opp', loci: ['JCVISYN3A_0169', '0165', '0167', '0168'], start: 114778, name: 'Opp', product: 'Oligopeptide ABC importer (amino acid supply)', role: 'uptake', aa: 2635, copies: 314, mrna: 0.518, membrane: true, rate: '~20 aa/s per complex (ATP-driven)' },
-  { id: 'rns', loci: ['JCVISYN3A_0010', '0008', '0009', '0011'], start: 13525, name: 'Rns', product: 'Nucleoside ABC importer (NTP supply)', role: 'uptake', aa: 2266, copies: 145, mrna: 0.223, membrane: true, rate: '~20 nt/s per complex (ATP-driven)' },
+  { id: 'ptsG', loci: ['JCVISYN3A_0779', '0233', '0694', '0234'], start: 460467, name: 'PtsG', product: 'PTS glucose transporter (EIICB, with EI, HPr, EIIA)', role: 'uptake', aa: 1561, copies: 831, mrna: 2.868, parts: 4, rxn: 'GLCpts', membrane: true, rate: '3122 /s (kcat)' },
+  { id: 'opp', loci: ['JCVISYN3A_0169', '0165', '0167', '0168'], start: 114778, name: 'Opp', product: 'Oligopeptide ABC importer (amino acid supply)', role: 'uptake', aa: 2635, copies: 314, mrna: 1.375, parts: 4, membrane: true, rate: '~20 aa/s per complex (ATP-driven)' },
+  { id: 'rns', loci: ['JCVISYN3A_0010', '0008', '0009', '0011'], start: 13525, name: 'Rns', product: 'Nucleoside ABC importer (NTP supply)', role: 'uptake', aa: 2266, copies: 145, mrna: 0.617, parts: 4, membrane: true, rate: '~20 nt/s per complex (ATP-driven)' },
   // Glycolysis
   { id: 'pgi', loci: ['JCVISYN3A_0445'], start: 297882, name: 'Pgi', product: 'Glucose-6-phosphate isomerase', role: 'glycolysis', aa: 427, copies: 266, mrna: 0.44, rxn: 'PGI', rate: '804 /s (kcat)' },
   { id: 'pfkA', loci: ['JCVISYN3A_0220'], start: 133142, name: 'PfkA', product: '6-Phosphofructokinase', role: 'glycolysis', aa: 326, copies: 458, mrna: 0.741, rxn: 'PFK', rate: '111 /s (kcat)' },
@@ -95,14 +97,14 @@ export const GENES = [
   { id: 'ldh', loci: ['JCVISYN3A_0475'], start: 307123, name: 'Ldh', product: 'L-lactate dehydrogenase', role: 'glycolysis', aa: 318, copies: 1100, mrna: 1.894, rxn: 'LDH', rate: '389 /s (kcat)' },
   // Lipids
   { id: 'glpK', loci: ['JCVISYN3A_0218'], start: 131274, name: 'GlpK', product: 'Glycerol kinase', role: 'lipids', aa: 505, copies: 396, mrna: 0.625, rxn: 'GLYK', rate: '3280 /s (kcat)' },
-  { id: 'fak', loci: ['JCVISYN3A_0420', '0617'], start: 272174, name: 'FakAB', product: 'Fatty acid kinase (FakA with FakB)', role: 'lipids', aa: 830, copies: 205, mrna: 0.324, rxn: 'FAK', rate: '74.9 /s (kcat)' },
-  { id: 'pls', loci: ['JCVISYN3A_0117', '0512'], start: 77446, name: 'PlsYC', product: 'Acyltransferases PlsY and PlsC (to phosphatidic acid)', role: 'lipids', aa: 568, copies: 170, mrna: 0.251, rxn: 'APG3PAT', membrane: true, rate: '8.5 /s (kcat)' },
+  { id: 'fak', loci: ['JCVISYN3A_0420', '0617'], start: 272174, name: 'FakAB', product: 'Fatty acid kinase (FakA with FakB)', role: 'lipids', aa: 830, copies: 205, mrna: 0.663, parts: 2, rxn: 'FAK', rate: '74.9 /s (kcat)' },
+  { id: 'pls', loci: ['JCVISYN3A_0117', '0512'], start: 77446, name: 'PlsYC', product: 'Acyltransferases PlsY and PlsC (to phosphatidic acid)', role: 'lipids', aa: 568, copies: 170, mrna: 0.253, parts: 2, rxn: 'APG3PAT', membrane: true, rate: '8.5 /s (kcat)' },
   // Information processing
-  { id: 'rnap', loci: ['JCVISYN3A_0804', '0803', '0645', '0407'], start: 479651, name: 'RNAP', product: 'RNA polymerase holoenzyme (beta, beta\', alpha2, sigma)', role: 'transcription', aa: 3686, copies: 187, mrna: 0.907, rate: '25 nt/s' },
-  { id: 'ribosome', loci: ['rrnA/B operons', 'rpsB ... rpmJ (52 r-proteins)'], start: 52580, name: 'Ribosome', product: '70S ribosome (2 rRNA operons, 52 proteins)', role: 'translation', aa: 7400, copies: 503, mrna: 0.83, rate: '12 aa/s' },
-  { id: 'rnj', loci: ['JCVISYN3A_0600', '0257'], start: 364772, name: 'RNase J', product: 'Degradosome (RNase J1/J2)', role: 'translation', aa: 1193, copies: 120, mrna: 0.173, rate: 'mRNA half-life 2 min' },
+  { id: 'rnap', loci: ['JCVISYN3A_0804', '0803', '0645', '0407'], start: 479651, name: 'RNAP', product: 'RNA polymerase holoenzyme (beta, beta\', alpha2, sigma)', role: 'transcription', aa: 3686, copies: 187, mrna: 2.509, parts: 4, rate: '25 nt/s' },
+  { id: 'ribosome', loci: ['rrnA/B operons', 'rpsB ... rpmJ (52 r-proteins)'], start: 52580, name: 'Ribosome', product: '70S ribosome (2 rRNA operons, 52 proteins)', role: 'translation', aa: 7400, copies: 503, mrna: 39.7, parts: 52, rate: '12 aa/s' },
+  { id: 'rnj', loci: ['JCVISYN3A_0600', '0257'], start: 364772, name: 'RNase J', product: 'Degradosome (RNase J1/J2)', role: 'translation', aa: 1193, copies: 120, mrna: 0.686, parts: 2, rate: 'mRNA half-life 2 min' },
   { id: 'dnaA', loci: ['JCVISYN3A_0001'], start: 1, name: 'DnaA', product: 'Replication initiator', role: 'replication', aa: 450, copies: 148, mrna: 0.261, rate: 'binds oriC on contact' },
-  { id: 'replisome', loci: ['JCVISYN3A_0303', '0002', '0834', '0406'], start: 183022, name: 'Replisome', product: 'PolC with DnaN clamp, DnaC helicase, DnaG primase', role: 'replication', aa: 2907, copies: 104, mrna: 0.123, rate: '75 bp/s per fork' },
+  { id: 'replisome', loci: ['JCVISYN3A_0303', '0002', '0834', '0406'], start: 183022, name: 'Replisome', product: 'PolC with DnaN clamp, DnaC helicase, DnaG primase', role: 'replication', aa: 2907, copies: 104, mrna: 0.757, parts: 4, rate: '75 bp/s per fork' },
   { id: 'ftsZ', loci: ['JCVISYN3A_0522'], start: 331411, name: 'FtsZ', product: 'Cell division GTPase (Z ring)', role: 'division', aa: 385, copies: 541, mrna: 0.853, rate: 'ring forms at midcell' },
 ];
 

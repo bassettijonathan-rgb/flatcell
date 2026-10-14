@@ -21,6 +21,7 @@
 
 import { World, CYTO, MEMBRANE, OUTSIDE } from '../core/world.js';
 import { SITE_LITERS, diffusionFromMass, fix } from '../core/units.js';
+import { probFromRate } from '../core/rng.js';
 import { GENES, CELL, PROCESS_RATES, MASS_PER_AA_KDA } from '../data/syn3a.js';
 import { countSites, SYN3A_LITERS } from './common.js';
 
@@ -37,11 +38,12 @@ export const DOGMA_DEFAULTS = {
 // are big and slow, new mRNAs start inside the nucleoid), so each chance is
 // scaled by a factor measured once in a long run of this cell, the same way
 // enzyme site probabilities are tuned to kcat and Km in milestone 1.
-export const CONTACT_CAL = { tx: 1.34, tl: 2.4, deg: 1.75 };
+export const CONTACT_CAL = { tx: 1.41, tl: 3.0, deg: 1.85 };
 
 const LN2 = Math.LN2;
 const DNA_BEADS = 54;             // ~10 kbp each
 const MRNA_D = 0.5;               // um^2/s; bacterial mRNAs measure 0.03-1
+export const D_MEMBRANE = 0.5;    // um^2/s, a transporter in a bacterial membrane
 const OTHER_AA = 330;             // average syn3A protein length
 const LUMP = 5;                   // proteins per "other proteins" crowder particle
 const ROLE_COLOR = {
@@ -113,15 +115,20 @@ export function expressionTable() {
   for (const g of rows) {
     g.kDeg = kDeg;
     // Translations per mRNA that keep the protein level through a doubling.
-    g.burst = (g.copies * growth) / (g.mrna * kDeg);
-    g.nt = 3 * g.aa + 60;
+    // A complex of several genes: each mRNA makes one part, and the
+    // complex appears when all its parts are made.
+    g.parts = g.parts || 1;
+    g.partAa = Math.round(g.aa / g.parts);
+    // Parts made per mRNA that keep the protein level through a doubling.
+    g.burst = (g.copies * g.parts * growth) / (g.mrna * kDeg);
+    g.nt = 3 * g.partAa + 60;
   }
   return rows;
 }
 
 // Builds species for machinery, gene products and DNA, and the per-step
 // expression system. Returns a handle with counters and helpers.
-export function setupExpression(world, { boost, share, sites, beads, spDNA, makeProduct, dilute = false, fixedMachinery = false, cal = CONTACT_CAL }) {
+export function setupExpression(world, { boost, share, sites, beads, spDNA, makeProduct, dilute = false, fixedMachinery = false, mrnaFloor = 0, cal = CONTACT_CAL }) {
   const dt = world.dt;
   const rows = expressionTable();
   const idx = Object.fromEntries(rows.map((g, k) => [g.id, k]));
@@ -141,44 +148,63 @@ export function setupExpression(world, { boost, share, sites, beads, spDNA, make
     const made = makeProduct?.(g);
     if (made !== undefined) return made;
     const m = kDa(g);
-    return world.addSpecies({ name: 'p:' + g.id, label: g.name, D: diffusionFromMass(m), size: m > 150 ? 2 : 1, color: ROLE_COLOR[g.role] || [0.5, 0.5, 0.5], radius: m > 150 ? 0.32 : 0.24, gene: g.id });
+    return world.addSpecies({
+      name: 'p:' + g.id, label: g.name, D: g.membrane ? D_MEMBRANE : diffusionFromMass(m), size: m > 150 ? 2 : 1,
+      compartment: g.membrane ? MEMBRANE : CYTO, color: ROLE_COLOR[g.role] || [0.5, 0.5, 0.5], radius: m > 150 ? 0.32 : 0.24, gene: g.id,
+    });
   });
 
   // Promoters: each gene on the bead covering its genome position; "other
-  // genes" spread over every bead.
+  // genes" spread over every bead. A promoter names its bead particle (and
+  // that particle's uid, so a bead lost at division drops its promoters).
   const nB = beads.length;
-  const promoters = []; // { bead, gene, rate share }
-  for (let k = 0; k < rows.length; k++) {
-    const g = rows[k];
-    if (g.id === 'other') {
-      for (let b = 0; b < nB; b++) promoters.push({ bead: b, gene: k, share: 1 / nB });
-    } else {
-      promoters.push({ bead: Math.min(nB - 1, Math.floor((g.start / CELL.genomeBp) * nB)), gene: k, share: 1 });
+  const beadOfGene = rows.map((g) => (g.id === 'other' ? -1 : Math.min(nB - 1, Math.floor((g.start / CELL.genomeBp) * nB))));
+  const promoters = []; // { b: particle, uid, gene, share }
+  const addPromoters = (j, b) => {
+    for (let k = 0; k < rows.length; k++) {
+      if (rows[k].id === 'other') promoters.push({ b, uid: world.uid[b], gene: k, share: 1 / nB });
+      else if (beadOfGene[k] === j) promoters.push({ b, uid: world.uid[b], gene: k, share: 1 });
     }
-  }
+  };
+  beads.forEach((b, j) => addPromoters(j, b));
 
   // Initial machinery and products at the slab's share of syn3A.
   const counts = rows.map((g) => Math.round(g.id === 'other' ? (g.copies * share) / LUMP : g.copies * share));
+  // mRNAs per gene in this slab, and parts made per mRNA. A slab holds a few
+  // percent of the cell but a whole chromosome, so a gene's mRNA can be rare
+  // here; with a floor, rare genes make more mRNAs that each make fewer
+  // proteins, keeping the mean output and smoothing it.
+  for (const g of rows) {
+    g.mSlab = Math.max(g.mrna * share, mrnaFloor);
+    g.bSlab = (g.burst * g.mrna * share) / g.mSlab;
+  }
 
   // Per-contact chances, from a well-mixed estimate of how often a partner
   // is within the 5-site neighbourhood: rate = lambda/dt * N * 5 / sites.
   const nRnap = counts[idx.rnap], nRibo = counts[idx.ribosome], nDeg = counts[idx.rnj];
   // Expected ribosomes busy, so initiation is calibrated against free ones.
   const riboBusy = rows.reduce((a, g) => a + g.copies * share * (LN2 / (CELL.doublingMin * 60)) * (g.aa / PROCESS_RATES.translationAaPerS), 0);
-  const rnapBusy = rows.reduce((a, g) => a + g.mrna * share * g.kDeg * (g.nt / PROCESS_RATES.transcriptionNtPerS), 0);
+  const rnapBusy = rows.reduce((a, g) => a + g.mSlab * g.kDeg * (g.nt / PROCESS_RATES.transcriptionNtPerS), 0);
   const perContact = (rateCell, partners) => fix(Math.min(1, (rateCell * boost * dt * sites) / (5 * Math.max(partners, 0.5))));
   const pDeg = perContact(rows[0].kDeg * cal.deg, nDeg);
-  const pTx = rows.map((g) => perContact(g.mrna * share * g.kDeg * cal.tx, Math.max(nRnap - rnapBusy, 1)));
-  const pTl = rows.map((g) => perContact(g.burst * g.kDeg * cal.tl, Math.max(nRibo - riboBusy, 1)));
+  const pTx = rows.map((g) => perContact(g.mSlab * g.kDeg * cal.tx, Math.max(nRnap - rnapBusy, 1)));
+  const pTl = rows.map((g) => perContact(g.bSlab * g.kDeg * cal.tl, Math.max(nRibo - riboBusy, 1)));
   const growth = LN2 / (CELL.doublingMin * 60);
   // Dilution stands in for growth in a cell that does not grow: each protein
   // particle leaves at the growth rate, so levels hold steady on average.
   const pDilute = fix(growth * boost * dt);
   const txSteps = rows.map((g) => Math.max(1, Math.round(g.nt / PROCESS_RATES.transcriptionNtPerS / boost / dt)));
-  const tlSteps = rows.map((g) => Math.max(1, Math.round(g.aa / PROCESS_RATES.translationAaPerS / boost / dt)));
+  const tlSteps = rows.map((g) => Math.max(1, Math.round(g.partAa / PROCESS_RATES.translationAaPerS / boost / dt)));
 
   const ex = {
-    rows, idx, sp, product, promoters, counts, beads,
+    rows, idx, sp, product, promoters, counts, beads, beadOfGene,
+    // A copy of genome bead j (particle b) gets that bead's promoters.
+    addPromoters,
+    prunePromoters() {
+      const keep = promoters.filter((p) => world.alive[p.b] && world.uid[p.b] === p.uid);
+      promoters.length = 0;
+      promoters.push(...keep);
+    },
     pDeg, pTx, pTl, txSteps, tlSteps, riboBusy, rnapBusy,
     // live tallies
     mrnaNow: new Int32Array(rows.length),
@@ -186,6 +212,7 @@ export function setupExpression(world, { boost, share, sites, beads, spDNA, make
     protMade: new Float64Array(rows.length),
     protNow: new Int32Array(rows.length),
     otherCredit: 0,
+    partCredit: new Int32Array(rows.length),
     bursts: [],          // translations per finished mRNA (all genes)
     lifetimes: [],       // mRNA lifetimes, cell seconds
     lifetimeSum: 0, lifetimeN: 0, burstSum: 0, burstN: 0,
@@ -218,9 +245,31 @@ export function setupExpression(world, { boost, share, sites, beads, spDNA, make
   };
   ex.placeNear = placeNear;
 
+  // Start with each gene's mRNAs already made (a Poisson draw around its
+  // slab level), next to the gene, so output does not ramp up from zero.
+  ex.seedMRNA = () => {
+    const rng = world.rng;
+    rows.forEach((g, k) => {
+      let n = 0;
+      // Poisson by inversion; means are small.
+      const L = 1 - probFromRate(g.mSlab);
+      let pr = rng.next();
+      while (pr > L && n < 50) { pr *= rng.next(); n++; }
+      for (let j = 0; j < n; j++) {
+        const b = beads[beadOfGene[k] >= 0 ? beadOfGene[k] : rng.int(beads.length)];
+        const m = placeNear(sp.mrna, world.pos[b]);
+        if (m >= 0) { world.aux[m] = k; world.prog[m] = 0; ex.mrnaNow[k]++; }
+      }
+    });
+  };
+
   const finishProtein = (k, s) => {
+    ex.aa += rows[k].partAa;
+    if (rows[k].parts > 1) {
+      if (++ex.partCredit[k] < rows[k].parts) return;
+      ex.partCredit[k] = 0;
+    }
     ex.protMade[k]++;
-    ex.aa += rows[k].aa;
     if (k === idx.other) {
       ex.otherCredit++;
       if (ex.otherCredit < LUMP) return;
@@ -264,8 +313,8 @@ export function setupExpression(world, { boost, share, sites, beads, spDNA, make
     }
     // --- promoters: a free RNAP on or next to the bead may start
     for (const p of promoters) {
-      const b = beads[p.bead];
-      if (b < 0 || !alive[b] || state[b] > 0) continue;
+      const b = p.b;
+      if (!alive[b] || uid[b] !== p.uid || state[b] > 0) continue;
       const pr = pTx[p.gene] * p.share;
       const s0 = pos[b];
       for (let d = 0; d < 5; d++) {
@@ -353,6 +402,7 @@ export function createDogma(options = {}) {
     for (let j = 0; j < n; j++) if (world.spawnRandom(ex.product[k]) >= 0) made++;
     if (scale[g.id] !== undefined) ex.protNow[k] = made;
   });
+  ex.seedMRNA();
   const sc = { id: 'm3', world, opts, ex, sites, share, beads, boost: opts.boost, spDNA };
 
   // Copy-number history for the charts, sampled every 5 s of cell time.

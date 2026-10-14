@@ -252,6 +252,64 @@ export const VIEWS = {
       }
     },
   },
+  m4: {
+    setup(root) {
+      root.innerHTML = `
+        <p class="chart-title">Cell cycle <small>· area and DNA, relative to a newborn cell; both must reach 2 before the cell divides</small></p>
+        <canvas class="chart" id="c-cycle" aria-label="Cell area and DNA content over time"></canvas>
+        <div class="legend" id="lg-cycle"></div>
+        <p class="chart-title">Proteins in the cell <small>· halves at each division</small></p>
+        <canvas class="chart short" id="c-prot4" aria-label="Protein count over time"></canvas>
+        <p class="chart-title">Divisions <small>· what each daughter got; the view follows the left one</small></p>
+        <div class="divlog" id="divlog"><p class="empty">No division yet.</p></div>`;
+    },
+    reset(h) { h.rows = []; },
+    update(stats, frame, h) {
+      for (const r of stats.newRows) h.rows.push(r);
+      if (h.rows.length > 4000) h.rows.splice(0, h.rows.length - 4000);
+    },
+    readouts(stats) {
+      const min = (s) => `${f2(s / 60)}`;
+      return [
+        readout(`Cycle ${stats.cycle}`, stats.phase),
+        readout('Age', min(stats.age), 'min since birth · syn3A doubles in 105'),
+        readout('Area', f2(stats.area), '× newborn'),
+        readout('DNA copied', (stats.copied * 100).toFixed(0), `%${stats.initAt >= 0 ? ` · started at ${min(stats.initAt)} min` : ''}`),
+        readout('Z ring', `${stats.ring}`, `FtsZ · neck ${(stats.neck * 100).toFixed(0)}% open`),
+        readout('Ribosomes · RNAP', `${stats.ribosomes} · ${stats.rnap}`, `${stats.mrna} mRNAs`),
+      ].join('');
+    },
+    draw(stats, frame, h, root) {
+      const R = h.rows;
+      const accent = cssVar('--accent'), hot = cssVar('--hot'), muted = cssVar('--muted');
+      if (R.length > 1) {
+        const xs = R.map((r) => r[0] / 60);
+        const x0 = xs[0], x1 = Math.max(xs[xs.length - 1], x0 + 10);
+        drawXY(root.querySelector('#c-cycle'), {
+          xMin: x0, xMax: x1, yMax: 2.5, xLabel: 'cell time, min', yLabel: '× newborn',
+          series: [
+            { kind: 'dashed', color: muted, xs: [x0, x1], ys: [2, 2], width: 1 },
+            { kind: 'line', color: accent, xs, ys: R.map((r) => r[1]), width: 2, endDot: true },
+            { kind: 'line', color: hot, xs, ys: R.map((r) => 1 + r[2]), width: 2, endDot: true },
+          ],
+        });
+        root.querySelector('#lg-cycle').innerHTML = `<span><i style="background:${accent}"></i>area (lipid made)</span><span><i style="background:${hot}"></i>chromosome copies</span>`;
+        drawXY(root.querySelector('#c-prot4'), {
+          xMin: x0, xMax: x1, yMax: Math.max(...R.map((r) => r[3])) * 1.15, xLabel: 'cell time, min', yLabel: 'proteins',
+          series: [{ kind: 'line', color: accent, xs, ys: R.map((r) => r[3]), width: 1.8, endDot: true }],
+        });
+      }
+      const D = stats.divisions;
+      const el = root.querySelector('#divlog');
+      if (D.length && el.dataset.n !== String(D.length)) {
+        el.dataset.n = String(D.length);
+        const pair = (p) => `${p[0]} | ${p[1]}`;
+        el.innerHTML = `<table><thead><tr><th>Cycle</th><th>Took</th><th>Ribosomes</th><th>RNAP</th><th>mRNAs</th></tr></thead><tbody>${
+          D.map((d) => `<tr><td>${d.cycle}</td><td>${f2(d.cycleTime / 60)} min</td><td>${pair(d.ribosome)}</td><td>${pair(d.rnap)}</td><td>${pair(d.mrna)}</td></tr>`).join('')
+        }</tbody></table>`;
+      }
+    },
+  },
 };
 
 const STEP_LABEL = { GLCpts: 'PTS', PGI: 'Pgi', PFK: 'PfkA', FBA: 'FbaA', TPI: 'TpiA', GAPD: 'GapDH', PGK: 'Pgk', PGM: 'Pgm', ENO: 'Eno', PYK: 'Pyk', LDH: 'Ldh' };

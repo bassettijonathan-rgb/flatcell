@@ -92,17 +92,7 @@ export const M3 = {
 
       busy(i) { return w.state[i] > 0 && w.kind[i] !== sc.spDNA; },
 
-      describe(i) {
-        const kd = w.kind[i];
-        if (kd === ex.sp.rnap) return w.state[i] > 0 ? `copying ${rows[w.state[i] - 1].name}` : 'searching for a promoter';
-        if (kd === ex.sp.ribosome) return w.state[i] > 0 ? `making ${rows[w.state[i] - 1].name}` : 'free';
-        if (kd === ex.sp.mrna) {
-          const g = rows[w.aux[i]];
-          return `${g.name} mRNA · ${w.state[i]} ribosome${w.state[i] === 1 ? '' : 's'} on it · ${w.prog[i]} started so far`;
-        }
-        if (kd === sc.spDNA) return w.state[i] > 0 ? 'a gene here is being copied' : 'chromosome';
-        return null;
-      },
+      describe(i) { return describeExpression(w, ex, i, sc.spDNA); },
 
       stats() {
         const k = watchK();
@@ -149,19 +139,33 @@ export const M3 = {
   },
 };
 
-function geneCard(g, k, sc) {
+// What an expression particle is doing, for the follow panel.
+export function describeExpression(w, ex, i, spDNA) {
+  const rows = ex.rows;
+  const kd = w.kind[i];
+  if (kd === ex.sp.rnap) return w.state[i] > 0 ? `copying ${rows[w.state[i] - 1].name}` : 'searching for a promoter';
+  if (kd === ex.sp.ribosome) return w.state[i] > 0 ? `making ${rows[w.state[i] - 1].name}` : 'free';
+  if (kd === ex.sp.mrna) {
+    const g = rows[w.aux[i]];
+    return `${g.name} mRNA · ${w.state[i]} ribosome${w.state[i] === 1 ? '' : 's'} on it · ${w.prog[i]} started so far`;
+  }
+  if (kd === spDNA) return w.state[i] > 0 ? 'a gene here is being transcribed' : 'chromosome';
+  return null;
+}
+
+export function geneCard(g, k, sc) {
   const ex = sc.ex;
   const other = g.id === 'other';
   const rows = [
     ['Locus', g.loci.join(', ')],
     ...(other ? [] : [['Genome position', `${(g.start / 1000).toFixed(1)} kbp of ${(CELL.genomeBp / 1000).toFixed(1)}`]]),
-    ['Protein length', `${other ? '~' : ''}${g.aa} aa`],
+    ['Protein length', g.parts > 1 ? `${g.aa} aa in ${g.parts} parts` : `${other ? '~' : ''}${g.aa} aa`],
     ['Copies per syn3A cell', Math.round(g.copies).toLocaleString('en-US')],
     ['In this cell slice', `${Math.round(g.copies * sc.share).toLocaleString('en-US')}${other ? ` (as ${Math.round(ex.counts[k])} lumps of 5)` : ''}`],
-    ['mRNAs per syn3A cell', `${+g.mrna.toPrecision(3)} on average`],
-    ['Proteins per mRNA', `${g.burst.toFixed(1)} needed to keep up with growth`],
-    ['Transcript', `${g.nt.toLocaleString('en-US')} nt, ${(g.nt / 25).toFixed(0)} s to copy`],
-    ['Translation', `${(g.aa / 12).toFixed(0)} s per protein at 12 aa/s`],
+    ['mRNAs per syn3A cell', `${+g.mrna.toPrecision(3)} on average${g.parts > 1 ? `, across ${g.parts} genes` : ''}`],
+    [g.parts > 1 ? 'Parts per mRNA' : 'Proteins per mRNA', `${g.burst.toFixed(1)} needed to keep up with growth`],
+    ['Transcript', `${g.nt.toLocaleString('en-US')} nt, ${(g.nt / 25).toFixed(0)} s to copy${g.parts > 1 ? ' (one part)' : ''}`],
+    ['Translation', `${(g.partAa / 12).toFixed(0)} s per ${g.parts > 1 ? 'part' : 'protein'} at 12 aa/s`],
   ];
   if (g.rate && !other) rows.push(['Activity', g.rate]);
   return { id: g.id, name: g.name, loci: g.loci, product: g.product, role: g.role, rows };

@@ -73,9 +73,13 @@ def main(data):
             report(f"Km {rxn} {sub}", km, km_tab[keys[0]] if keys else None)
     counts = {row["LocusTag"]: float(row["Count"]) for row in csv.DictReader((data / "mRNA_counts.csv").open())}
     for g in genes:
-        if len(g["loci"]) != 1 or g["loci"][0] not in counts:
+        # Complexes sum the mRNAs of every locus they list ('0233' is short
+        # for JCVISYN3A_0233). The ribosome row lists no loci; its 52
+        # r-protein genes sum to 39.7 mRNAs per cell.
+        tags = [l if l.startswith("JCVISYN3A_") else "JCVISYN3A_" + l for l in g["loci"]]
+        if not all(t in counts for t in tags):
             continue
-        ref = counts[g["loci"][0]]
+        ref = sum(counts[t] for t in tags)
         report(f"mRNA {g['id']}", g["mrna"], round(ref, 3))
     print("mismatches:", bad)
     return 1 if bad else 0

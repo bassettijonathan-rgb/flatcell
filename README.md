@@ -3,8 +3,8 @@
 A 2D browser simulation of JCVI-syn3A, the minimal bacterium, built from one
 rule: molecules move by Brownian motion, and enzymes only react with what they
 bump into. Rates are not written into the model. Michaelis–Menten curves,
-crowding slowdowns and (in later milestones) metabolic flux, expression bursts
-and cell division have to emerge from encounters on a lattice.
+crowding slowdowns, metabolic flux, expression bursts and cell division
+have to emerge from encounters on a lattice.
 
 Plain JavaScript ES modules, no build step for development, no framework. The
 simulation runs in a Web Worker; drawing uses WebGPU, then WebGL2, then
@@ -18,7 +18,7 @@ page that runs as a claude.ai Artifact, down to phone width.
 | 1 | **Test tube**: one syn3A enzyme and its substrate. Michaelis–Menten curves emerge and match theory; crowding sliders show the slowdown. | done |
 | 2 | **Glycolysis box**: the pathway from glucose to lactate making ATP, with a channelling demo (clustered vs spread enzymes). | done |
 | 3 | **Central dogma**: transcription and translation with stochastic bursts in live copy numbers. | done |
-| 4 | **Whole cell**: grows its membrane, copies its DNA and divides at least once. | next |
+| 4 | **Whole cell**: grows its membrane, copies its DNA and divides at least once. | done |
 
 ## Running it
 
@@ -168,10 +168,10 @@ time after a warm-up):
 
 | | Lattice | syn3A target |
 |---|---|---|
-| mRNAs in the cell, time average | 4.5 | 4.7 |
-| mRNA half-life | 2.3 min (1.9–2.2 over four seeds) | 2 min |
-| Proteins per mRNA | 10.5 | 10.6 |
-| Variance / mean of proteins per mRNA | 13.7 | 11.6 for a geometric burst |
+| mRNAs in the cell, time average | 4.7 | 4.7 |
+| mRNA half-life | 2.0 min (1.9–2.1 over four seeds) | 2 min |
+| Proteins per mRNA | 13.5 | 14.8 |
+| Variance / mean of proteins per mRNA | 17.7 | about 16 for geometric bursts |
 
 - **Bursts.** Each mRNA is translated until a degradosome finds it, so the
   number of proteins per mRNA follows the geometric distribution of that
@@ -179,11 +179,49 @@ time after a warm-up):
   mRNAs appears (GapDH, the most transcribed gene here, gets one about every
   40 minutes of cell time) and drifts down between them.
 - **Ribosomes protect mRNA.** Contact chances are calibrated at syn3A levels
-  and then left alone. With 4× the ribosomes, mRNAs live about 4 min and make
-  about 39 proteins each; with a quarter, 1.4 min and 2.5 proteins. Ribosomes
-  crowd round the mRNA they are reading and keep degradosomes off it.
-  Four times the degradosomes shortens mRNA life to about half a minute and
-  bursts to 3.7.
+  and then left alone. With 4× the ribosomes, mRNAs live about 4.4 min and
+  make about 48 proteins each; with a quarter, 1.2 min and 3 proteins.
+  Ribosomes crowd round the mRNA they are reading and keep degradosomes off
+  it. Four times the degradosomes shortens mRNA life to about 0.6 min and
+  bursts to 5.6.
+
+## Milestone 4 results
+
+The whole cell starts as the milestone-3 disc and adds what a cycle needs:
+
+- **Membrane growth from encounters.** Fatty acid enters through every
+  membrane site, FakAB in the cytoplasm turns it into acyl phosphate, and
+  PlsYC in the membrane turns that into lipid, each on encounter with the
+  enzyme's measured Km. Lipid synthesis is a growth process, so like
+  transcription it runs 1,000× faster than diffusion. The cell's area
+  follows its lipid (23 lipids per 100 nm² of area), so the disc stretches
+  into a capsule.
+- **Replication.** DnaA opens the origin bead on contact. Each of the two
+  replisomes that then reach the origin takes a fork and copies one 10 kbp
+  bead every 134 s (75 bp/s), with copies of the genes it passes
+  transcribed from then on.
+- **Segregation.** Copied beads are drawn towards opposite poles, the old
+  chromosome to one, the copy to the other.
+- **Division.** Once the DNA is copied, the two chromosomes are apart, and
+  the area has doubled, FtsZ that reaches the membrane at midcell joins a Z
+  ring. The ring pinches the cell at a speed set by how much FtsZ it holds
+  (10 min for a full ring). At the cut, everything on the far side leaves
+  with the other daughter, and the view recentres on the one left.
+
+What `test/wholecell.test.mjs` checks (seed 1):
+
+| | Lattice | syn3A |
+|---|---|---|
+| First cycle | 105 min | 105 min doubling |
+| Replication, origin to terminus | 61 min | about 60 min at 75 bp/s |
+| DNA at division | one whole chromosome per daughter | |
+| Contents | split between daughters, none lost | |
+
+The daughter then starts its next cycle. Proteins are partitioned at random,
+so a daughter can be short of one: in seed 1 the kept daughter gets 26 of
+35 ribosomes. On this machine's headless Chromium a cycle takes about four
+minutes of real time (7,000 steps per second, about 30 s of cell time per
+second).
 
 ## Every simplification
 
@@ -245,7 +283,7 @@ time after a warm-up):
     factor, Km 0.1 mM), every pathway that branches off glycolysis, and
     lactate export, which is a first-order leak at 5 /s.
 16. **ATP demand is a first-order sink** standing for everything else the
-    cell spends ATP on, until milestones 3 and 4 spend it for real.
+    cell spends ATP on. Milestones 3 and 4 do not track ATP.
 17. **The channelling loss is a free parameter.** 1,3-BPG's real competing
     fates are slow; the loss rate is a knob that sets how far it travels,
     and the clustered enzymes are held still as a scaffold would hold them.
@@ -258,24 +296,49 @@ time after a warm-up):
     of how often two particles meet sets each chance; the lattice makes
     meetings rarer (ribosomes are big and slow, new mRNAs start in the
     nucleoid), so transcription, translation and decay chances carry
-    measured factors of 1.34, 2.4 and 1.75 (`CONTACT_CAL` in
-    `src/scenarios/dogma.js`).
-20. **Genes are single promoters.** Operons and multi-subunit complexes are
-    one row with one transcript, the "other genes" row stands for about 430
-    genes, and every mRNA has the same intrinsic decay chance. There is no
-    regulation: promoter strength is set from the measured mRNA counts.
-21. **The chromosome is static.** Its beads do not move, and only the RNA
-    polymerase on a gene is held still; the transcript's 5' end is not
-    available to ribosomes until the copy is finished (no coupling of
-    transcription and translation).
+    measured factors of 1.41, 3.0 and 1.85 (`CONTACT_CAL` in
+    `src/scenarios/dogma.js`; `tools/m3cal.mjs` measures them).
+20. **Genes are single promoters.** A multi-subunit complex is one row on
+    one promoter: its mRNAs are the sum over its genes (52 for the
+    ribosome's proteins, 4 for RNA polymerase), each mRNA makes one part, and
+    the complex appears when all its parts are made. rRNA is not modelled.
+    The "other genes" row stands for about 430 genes, every mRNA has the same
+    intrinsic decay chance, and there is no regulation: promoter strength is
+    set from the measured mRNA counts.
+21. **The chromosome is a chain of frozen beads.** Beads move only when
+    segregation pulls them; only the RNA polymerase on a gene is held still;
+    the transcript's 5' end is not available to ribosomes until the copy is
+    finished (no coupling of transcription and translation).
 22. **One ribosome or polymerase per particle, any number per mRNA.** A
     ribosome reads the whole mRNA in one go; ribosomes do not queue along it.
 23. **The milestone-3 cell does not grow.** Machinery stays at syn3A levels
     (new RNA polymerases, ribosomes and degradosomes are counted but not
     added), and every other protein particle leaves at the growth rate, which
-    stands in for dilution. Amino acids and nucleotides are not tracked yet.
+    stands in for dilution. Amino acids and nucleotides are not tracked.
 24. **Translation speed is a bacterial average.** syn3A's own elongation
     rate is not measured; 12 aa/s is in the 10–20 aa/s bacterial range.
+
+25. **Lipid supply is a set rate.** Fatty acid uptake (37 molecules per
+    membrane site per second, at the boosted clock) is the one number chosen
+    to give a 105-minute doubling; there is no syn3A uptake measurement to
+    use. ATP and glycerol 3-phosphate are taken as saturating for FakAB and
+    PlsYC, and glycolysis is not run in the whole cell.
+26. **Area follows lipid.** In 3D a sphere's volume grows faster than its
+    surface; in the slab the cell's area is simply proportional to the lipid
+    made, and the cell keeps its 200 nm radius as it stretches.
+27. **A floor on mRNA per gene in the whole cell.** The slab holds 3.4% of
+    the cell's proteins but a whole chromosome, so most genes would have an
+    mRNA only every few hours and some cycle proteins (DnaA, five copies)
+    would run out after a division. In milestone 4 each gene has at least
+    0.2 mRNAs on average, with proportionally fewer proteins per mRNA, which
+    keeps each protein's mean output and smooths it.
+28. **Initiation, segregation and constriction are simple rules.** DnaA
+    opens the origin with a contact chance set for a 5-minute wait at
+    birth copy numbers (no DnaA-ATP cycle or titration); chromosomes are
+    pulled to their poles by a bias, not by entropy or a partition system;
+    the ring's speed scales with its FtsZ up to eight.
+29. **One daughter is followed.** The other leaves the simulation at
+    division.
 
 ## Data sources
 
@@ -289,7 +352,8 @@ time after a warm-up):
 - Ribosomes (503), RNA polymerases (187), cell radius (200 nm), mRNA
   half-life (~2 min), degradosomes (120): Thornburg et al. 2022.
   Transcription 25 nt/s: Thornburg et al. 2019. Doubling time 105 min:
-  Breuer et al. 2019.
+  Breuer et al. 2019. Fork speed: chosen to copy 543 kbp in about an hour
+  with two forks.
 - GFP cytoplasmic diffusion: Elowitz et al. 1999, *J. Bacteriol.* 181:197.
 
 ## Layout

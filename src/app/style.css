@@ -143,3 +143,8 @@ button, input, select { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .chart-title { font-size: 12px; font-weight: 600; color: var(--ink); margin: 14px 0 4px; }
 .chart-title small { font-weight: 400; color: var(--muted); }
+
+.divlog { overflow-x: auto; }
+.divlog table { border-collapse: collapse; width: 100%; font: 12px/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
+.divlog th, .divlog td { text-align: left; padding: 4px 10px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.divlog th { color: var(--muted); font-weight: 500; }
