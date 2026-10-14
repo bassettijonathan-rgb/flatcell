@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flatcell</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="src/app/style.css">
+</head>
+<body>
+<header class="top">
+  <h1 class="brand">Flatcell<small>JCVI-syn3A in 2D</small></h1>
+  <nav class="tabs" id="tabs" aria-label="Milestones"></nav>
+</header>
+
+<main class="stage">
+  <section class="viewer" aria-label="Live view">
+    <div class="scope">
+      <canvas id="view" aria-label="Simulation view. Click a particle to follow it."></canvas>
+      <div class="hud"><span id="hud-left"></span><span id="hud-right"></span></div>
+    </div>
+    <div class="transport">
+      <button class="btn primary" id="run">Run</button>
+      <button class="btn" id="stepBtn" title="Advance 100 steps">Step</button>
+      <button class="btn" id="reset">Reset</button>
+      <div class="speed">
+        <label for="speed" class="status">Speed</label>
+        <input type="range" id="speed" min="0" max="100" value="100">
+      </div>
+      <div class="clock" id="clock">Starting…</div>
+    </div>
+    <div class="chips" id="layers" aria-label="Layers"></div>
+    <div class="seedrow">
+      <label for="seed">Seed</label><input id="seed" type="number" min="1" step="1" value="1">
+      <button class="btn" id="reseed">Restart with seed</button>
+      <button class="btn" id="fpBtn">Fingerprint</button>
+      <span id="fp"></span>
+    </div>
+  </section>
+
+  <aside class="panels">
+    <section class="panel" id="scenario-panel">
+      <p class="eyebrow" id="scenario-eyebrow">Milestone</p>
+      <h2 id="scenario-title"></h2>
+      <p id="scenario-blurb"></p>
+      <div class="controls" id="controls"></div>
+      <div class="actions" id="actions"></div>
+    </section>
+    <section class="panel" id="charts-panel">
+      <p class="eyebrow">Live measurements</p>
+      <div class="readouts" id="readouts"></div>
+      <div id="charts"></div>
+    </section>
+    <section class="panel" id="follow-panel">
+      <p class="eyebrow">Followed particle</p>
+      <div id="follow"><p class="empty">Click any particle in the view to follow its path.</p></div>
+    </section>
+    <section class="panel" id="gene-panel">
+      <p class="eyebrow">About this gene</p>
+      <div id="gene"></div>
+    </section>
+  </aside>
+</main>
+<script type="module" src="src/app/main.js"></script>
+</body>
+</html>
