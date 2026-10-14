@@ -3,6 +3,7 @@
 import { createTestTube, ENZYME_CHOICES, defaultKon, TESTTUBE_DEFAULTS } from './testtube.js';
 import { REACTIONS, GENES } from '../data/syn3a.js';
 import { D_METABOLITE } from '../core/units.js';
+import { labelAt, num, HOW_TO_READ } from './guide.js';
 
 const GENE_OF = { TPI: 'tpiA', PGI: 'pgi', PGM: 'pgm', ENO: 'eno' };
 
@@ -21,6 +22,8 @@ export const M1 = {
     carry.sweeps = carry.sweeps || [];
     sc.sweeps = carry.sweeps;
 
+    let lastPoints = 0;
+    const firstCrowder = () => { for (let i = 0; i < w.cap; i++) if (w.alive[i] && w.kind[i] === sc.species.crowder) return i; return -1; };
     const a = {
       sc,
       world: w,
@@ -39,10 +42,20 @@ export const M1 = {
           species: w.species.map((sp) => ({ name: sp.name, label: sp.label, color: sp.color, radius: sp.radius, gene: sp.gene })),
           fields: w.fields.defs.map((d) => ({ index: d.index, name: d.name, label: d.label })),
           layers: [
-            { id: 'sp:enzyme', label: gene.name, kind: 'species', on: true },
-            { id: 'sp:crowder', label: 'Crowders', kind: 'species', on: true },
-            { id: 'heat:S', label: r.subs[0].toUpperCase() + ' heatmap', kind: 'heat', field: sc.fields.S, on: true },
-            { id: 'heat:P', label: r.prods[0].toUpperCase() + ' heatmap', kind: 'heat', field: sc.fields.P, on: false },
+            { id: 'sp:enzyme', label: gene.name, kind: 'species', on: true,
+              about: `One ${gene.name} enzyme. It turns ${r.subs[0].toUpperCase()} into ${r.prods[0].toUpperCase()}, but only when a ${r.subs[0].toUpperCase()} molecule diffuses into its own 10 nm square. Bright centre: holding a substrate.` },
+            { id: 'sp:crowder', label: 'Crowders', kind: 'species', on: true,
+              about: 'Inert proteins that only take up room, standing in for the rest of the cell. Substrate cannot pass through them.' },
+            { id: 'heat:S', label: r.subs[0].toUpperCase() + ' heatmap', kind: 'heat', field: sc.fields.S, on: true,
+              about: `${r.subs[0].toUpperCase()}, the substrate: brighter means more. Look for dark dents around busy enzymes.` },
+            { id: 'heat:P', label: r.prods[0].toUpperCase() + ' heatmap', kind: 'heat', field: sc.fields.P, on: false,
+              about: `${r.prods[0].toUpperCase()}, the product, released where enzymes work and washed out of the tube.` },
+          ],
+          howto: HOW_TO_READ,
+          tips: [
+            { label: 'Trace the curve', detail: 'Steps the substrate through eight levels and plots each measured rate against the Michaelis–Menten line.', action: 'sweep' },
+            { label: 'Crowd a fast enzyme', detail: 'Makes the enzyme diffusion-limited and fills 40% of the tube with crowders: turnover drops, because substrate takes longer to arrive.', set: [['mode', 'perfect'], ['crowding', 0.4]] },
+            { label: 'Slow the substrate', detail: 'Makes the substrate diffuse like a protein (1 µm²/s) so arrival, not chemistry, limits the rate.', set: [['substrateD', 1]] },
           ],
           controls: [
             { id: 'enzyme', label: 'Enzyme', type: 'select', value: opts.enzyme, rebuild: true,
@@ -104,7 +117,32 @@ export const M1 = {
       stats() {
         const th = sc.theory();
         const sw = sc.sweep;
+        // Explanations: what is happening, what just happened, what is where.
+        const S = r.subs[0].toUpperCase(), P = r.prods[0].toUpperCase();
+        const vth = th.kcat * sc.S / (th.Km + sc.S);
+        const bound = 1 - sc.countFree() / sc.enzymes.length;
+        let now = `${sc.enzymes.length} ${gene.name} enzymes turn ${S} into ${P}, each only when a molecule of ${S} wanders into its 10 nm square. `;
+        if (sc.live.rate > 0) {
+          const dev = (sc.live.rate / vth - 1) * 100;
+          now += `Right now ${Math.round(bound * 100)}% of them are holding one, and each makes ${num(sc.live.rate)} ${P} per second: ${Math.abs(dev) < 5 ? 'on' : dev > 0 ? `${num(dev)}% above` : `${num(-dev)}% below`} the Michaelis–Menten prediction of ${num(vth)}/s at ${num(sc.S)} mM.`;
+        } else now += 'Measuring the turnover rate…';
+        if (opts.crowding > 0) now += ` Crowders fill ${Math.round(opts.crowding * 100)}% of the tube.`;
+        if (sw) now += ` A sweep is tracing the curve: substrate level ${Math.min(sw.k + 1, sw.points.length)} of ${sw.points.length}.`;
+        const events = [];
+        if (sw && sw.results.length > lastPoints) {
+          const p = sw.results[sw.results.length - 1];
+          const t = p.S;
+          events.push({ t: w.time, text: `Sweep point ${sw.results.length}: at ${num(t)} mM ${S}, ${num(p.v)} turnovers/s per enzyme (theory ${num(th.kcat * t / (th.Km + t))}).` });
+        }
+        if (!sw && lastPoints > 0) events.push({ t: w.time, text: 'Sweep finished: its points are on the curve chart.' });
+        lastPoints = sw ? sw.results.length : 0;
+        const e0 = sc.enzymes[0];
+        const labels = [
+          labelAt(w, e0, w.state[e0] > 0 ? `${gene.name} enzyme, holding ${S}` : `${gene.name} enzyme, waiting for ${S}`),
+          opts.crowding > 0 ? labelAt(w, firstCrowder(), 'crowder') : null,
+        ].filter(Boolean);
         return {
+          guide: { now, events, labels },
           S: sc.S,
           rate: sc.live.rate,
           rateErr: sc.live.err,

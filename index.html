@@ -20,8 +20,17 @@
   <section class="viewer" aria-label="Live view">
     <div class="scope">
       <canvas id="view" aria-label="Simulation view. Click a particle to follow it."></canvas>
+      <canvas id="labels" class="labels" aria-hidden="true"></canvas>
       <div class="hud"><span id="hud-left"></span><span id="hud-right"></span></div>
     </div>
+    <section class="guide" aria-label="What is happening">
+      <div class="guide-head">
+        <p class="eyebrow">What’s happening</p>
+        <button class="linkish" id="labelsBtn" aria-pressed="true">Hide labels</button>
+      </div>
+      <p class="guide-now" id="guide-now">Starting…</p>
+      <ol class="moments" id="moments" aria-live="polite"></ol>
+    </section>
     <div class="transport">
       <button class="btn primary" id="run">Run</button>
       <button class="btn" id="stepBtn" title="Advance 100 steps">Step</button>
@@ -46,6 +55,12 @@
       <p class="eyebrow" id="scenario-eyebrow">Milestone</p>
       <h2 id="scenario-title"></h2>
       <p id="scenario-blurb"></p>
+      <details class="key" id="key">
+        <summary>What the dots are</summary>
+        <ul class="key-list" id="key-list"></ul>
+        <p class="key-howto" id="key-howto"></p>
+      </details>
+      <div class="tips" id="tips"></div>
       <div class="controls" id="controls"></div>
       <div class="actions" id="actions"></div>
     </section>
