@@ -9,11 +9,12 @@ import { cssVar, fmtNum } from './charts.js';
 const MILESTONES = [
   { id: 'm1', n: 1, label: 'Test tube', ready: true },
   { id: 'm2', n: 2, label: 'Glycolysis', ready: true },
-  { id: 'm3', n: 3, label: 'Central dogma', ready: false },
+  { id: 'm3', n: 3, label: 'Central dogma', ready: true },
   { id: 'm4', n: 4, label: 'Whole cell', ready: false },
 ];
 
 const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 let canvas = $('view');
 
 const app = {
@@ -70,10 +71,8 @@ function onInfo(msg) {
   app.info = info;
   app.dirtyBg = true;
   app.sites = null;
-  if (firstOfScenario) {
-    app.layers = {};
-    for (const l of info.layers) app.layers[l.id] = l.on;
-  }
+  if (firstOfScenario) app.layers = {};
+  for (const l of info.layers) if (!(l.id in app.layers)) app.layers[l.id] = l.on;
   renderTabs();
   renderLayers();
   renderControls();
@@ -156,7 +155,7 @@ function updatePanels(f) {
   $('clock').innerHTML = `1 s on screen = <b>${fmtDuration(ratio)}</b> of ${info.clock.unit} · ${compress}`
     + (boost > 1 ? ` · slow processes run ${boost}× faster than diffusion` : '')
     + ` · ${fmtNum(f.stepsPerSec)} steps/s`;
-  $('hud-left').textContent = `t = ${fmtDuration(f.time * boost)} · step ${f.step.toLocaleString('en-US')}`;
+  $('hud-left').innerHTML = `t = ${fmtDuration(f.time * boost)}<span class="hud-step"> · step ${f.step.toLocaleString('en-US')}</span>`;
   const sbSites = app.view ? Math.max(1, Math.round(60 / app.view.pps)) : 5;
   $('hud-right').innerHTML = `<span class="scalebar"><i style="width:${(app.view?.pps || 10) * sbSites}px"></i>${sbSites * 10} nm</span> · ${app.renderer.kind}${sim.mode === 'page' ? ' · page thread' : ''}`;
   $('readouts').innerHTML = view.readouts(f.stats, f);
@@ -179,7 +178,7 @@ function renderLayers() {
   $('layers').innerHTML = info.layers.map((l) => {
     let sw = '';
     if (l.kind === 'species') {
-      const sp = info.species.find((s) => 'sp:' + s.name === l.id);
+      const sp = info.species.find((s) => (l.swatch ? s.name === l.swatch : 'sp:' + s.name === l.id));
       const c = sp ? sp.color.map((v) => Math.round(v * 255)).join(',') : '128,128,128';
       sw = `<span class="sw" style="background:rgb(${c})"></span>`;
     } else sw = '<span class="sw"></span>';
@@ -201,8 +200,9 @@ function renderLayers() {
 
 function sendLayers() {
   const info = app.info;
+  // A layer covers one species by id, or a group through its species list.
   const hidden = info.species.map((sp) => {
-    const l = info.layers.find((x) => x.id === 'sp:' + sp.name);
+    const l = info.layers.find((x) => x.id === 'sp:' + sp.name || x.species?.includes(sp.name));
     return l && !app.layers[l.id] ? 1 : 0;
   });
   const heat = info.layers.find((l) => l.kind === 'heat' && app.layers[l.id]);
@@ -262,7 +262,7 @@ function renderFollow(f) {
   const trailSites = f.follow.trail.length / 2;
   el.innerHTML = `<dl class="kv">
     <dt>Particle</dt><dd>${sp ? sp.label : 'gone'} #${f.follow.uid}</dd>
-    <dt>State</dt><dd>${!f.follow.alive ? 'degraded or removed' : f.follow.state > 0 ? '<span class="pill warn">bound</span>' : '<span class="pill">free</span>'}</dd>
+    <dt>State</dt><dd>${!f.follow.alive ? 'degraded or removed' : f.follow.note ? esc(f.follow.note) : f.follow.state > 0 ? '<span class="pill warn">bound</span>' : '<span class="pill">free</span>'}</dd>
     <dt>Sites visited</dt><dd>${trailSites}</dd>
   </dl><div class="actions"><button class="btn" id="unfollow">Stop following</button></div>`;
   $('unfollow').onclick = () => sim.send({ type: 'unfollow' });

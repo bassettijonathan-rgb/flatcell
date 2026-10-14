@@ -137,6 +137,7 @@ export function createHost(post, { budgetMs = 12, now = () => performance.now(),
         species: i >= 0 ? w.kind[i] : -1,
         state: i >= 0 ? w.state[i] : 0,
         age: i >= 0 ? w.time - w.born[i] : 0,
+        note: i >= 0 && w.alive[i] && adapter.describe ? adapter.describe(i) : null,
         trail: Float32Array.from(follow.trail),
       };
     }
@@ -165,7 +166,9 @@ export function createHost(post, { budgetMs = 12, now = () => performance.now(),
           break;
         case 'control': {
           const next = adapter.control(m.id, m.value);
-          if (next) load(adapter.info().id, next, true);
+          // 'info' means the world stays but what the page shows changed.
+          if (next === 'info') { post({ type: 'info', info: adapter.info(), seed: adapter.world.seed }); wantFrame = true; }
+          else if (next) load(adapter.info().id, next, true);
           break;
         }
         case 'action': {

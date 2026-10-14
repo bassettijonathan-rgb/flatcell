@@ -100,6 +100,12 @@ export function drawXY(canvas, { xMax, yMax, xMin = 0, yMin = 0, xLabel, yLabel,
       ctx.lineTo(X(s.xs[s.xs.length - 1]), Y(yMin));
       ctx.closePath();
       ctx.fill();
+    } else if (s.kind === 'hist') {
+      // Bars of width s.bw starting at each x.
+      for (let k = 0; k < s.xs.length; k++) {
+        const x0 = X(s.xs[k]) + 1, x1 = X(s.xs[k] + s.bw) - 1;
+        ctx.fillRect(x0, Y(s.ys[k]), Math.max(1, x1 - x0), Y(yMin) - Y(s.ys[k]));
+      }
     } else if (s.kind === 'steps') {
       ctx.lineWidth = s.width || 1.6;
       ctx.beginPath();

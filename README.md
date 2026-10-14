@@ -17,8 +17,8 @@ page that runs as a claude.ai Artifact, down to phone width.
 |---|---|---|
 | 1 | **Test tube**: one syn3A enzyme and its substrate. Michaelis–Menten curves emerge and match theory; crowding sliders show the slowdown. | done |
 | 2 | **Glycolysis box**: the pathway from glucose to lactate making ATP, with a channelling demo (clustered vs spread enzymes). | done |
-| 3 | **Central dogma**: transcription and translation with stochastic bursts in live copy numbers. | next |
-| 4 | **Whole cell**: grows its membrane, copies its DNA and divides at least once. | planned |
+| 3 | **Central dogma**: transcription and translation with stochastic bursts in live copy numbers. | done |
+| 4 | **Whole cell**: grows its membrane, copies its DNA and divides at least once. | next |
 
 ## Running it
 
@@ -137,6 +137,54 @@ So proximity doubles what a free, fast metabolite delivers, but most of it
 still escapes: proximity alone is a weak channel unless the intermediate is
 held back.
 
+## Milestone 3 results
+
+The central-dogma cell is a 400 nm disc (1,124 cytoplasm sites inside a
+membrane rim) with the chromosome as 54 frozen beads of about 10 kbp each in
+the middle. Each of the 21 modelled genes sits on the bead covering its
+genome position; a 22nd row, "other genes", carries the rest of the proteome
+and is spread over every bead, so polymerases and ribosomes carry their real
+load. Machinery and proteins start at syn3A copy numbers scaled to the slab
+(6 RNA polymerases, 17 ribosomes, 4 degradosomes, 45 GapDH …, and the rest
+of the proteome as lumps of five proteins).
+
+Three things happen, each only on contact:
+
+- an RNA polymerase next to a promoter may start a transcript; it stays on
+  the gene for the copying time (25 nt/s), then lets a new mRNA go;
+- a free ribosome next to an mRNA may start translating; it holds the mRNA
+  still for the translation time (12 aa/s) and then releases a protein;
+- a degradosome next to an mRNA may destroy it.
+
+Each contact chance is set from syn3A's targets (mRNA count per gene,
+2-minute half-life, and enough proteins per mRNA to keep each level through
+a 105-minute doubling), then scaled by one measured factor per process so
+the lattice reproduces them. That is the same move as tuning an enzyme's
+site probability to its kcat and Km. Slow processes run 1,000× faster than
+diffusion, so the page shows about an hour of cell time per minute.
+
+What emerges, and what `test/dogma.test.mjs` checks (seed 1, 1.4 h of cell
+time after a warm-up):
+
+| | Lattice | syn3A target |
+|---|---|---|
+| mRNAs in the cell, time average | 4.5 | 4.7 |
+| mRNA half-life | 2.3 min (1.9–2.2 over four seeds) | 2 min |
+| Proteins per mRNA | 10.5 | 10.6 |
+| Variance / mean of proteins per mRNA | 13.7 | 11.6 for a geometric burst |
+
+- **Bursts.** Each mRNA is translated until a degradosome finds it, so the
+  number of proteins per mRNA follows the geometric distribution of that
+  race, and a gene's protein count climbs in steps when one of its rare
+  mRNAs appears (GapDH, the most transcribed gene here, gets one about every
+  40 minutes of cell time) and drifts down between them.
+- **Ribosomes protect mRNA.** Contact chances are calibrated at syn3A levels
+  and then left alone. With 4× the ribosomes, mRNAs live about 4 min and make
+  about 39 proteins each; with a quarter, 1.4 min and 2.5 proteins. Ribosomes
+  crowd round the mRNA they are reading and keep degradosomes off it.
+  Four times the degradosomes shortens mRNA life to about half a minute and
+  bursts to 3.7.
+
 ## Every simplification
 
 1. **Two dimensions.** The cell is a 10 nm slab, not a 400 nm sphere. Copy
@@ -202,6 +250,33 @@ held back.
     fates are slow; the loss rate is a knob that sets how far it travels,
     and the clustered enzymes are held still as a scaffold would hold them.
 
+18. **Slow processes are boosted** 1,000× relative to diffusion in milestone
+    3: transcription, translation, mRNA decay and dilution all run fast while
+    molecules move at their real speed. A burst therefore spreads less far
+    from its mRNA than it would in a real cell.
+19. **Contact chances are calibrated, not derived.** A well-mixed estimate
+    of how often two particles meet sets each chance; the lattice makes
+    meetings rarer (ribosomes are big and slow, new mRNAs start in the
+    nucleoid), so transcription, translation and decay chances carry
+    measured factors of 1.34, 2.4 and 1.75 (`CONTACT_CAL` in
+    `src/scenarios/dogma.js`).
+20. **Genes are single promoters.** Operons and multi-subunit complexes are
+    one row with one transcript, the "other genes" row stands for about 430
+    genes, and every mRNA has the same intrinsic decay chance. There is no
+    regulation: promoter strength is set from the measured mRNA counts.
+21. **The chromosome is static.** Its beads do not move, and only the RNA
+    polymerase on a gene is held still; the transcript's 5' end is not
+    available to ribosomes until the copy is finished (no coupling of
+    transcription and translation).
+22. **One ribosome or polymerase per particle, any number per mRNA.** A
+    ribosome reads the whole mRNA in one go; ribosomes do not queue along it.
+23. **The milestone-3 cell does not grow.** Machinery stays at syn3A levels
+    (new RNA polymerases, ribosomes and degradosomes are counted but not
+    added), and every other protein particle leaves at the growth rate, which
+    stands in for dilution. Amino acids and nucleotides are not tracked yet.
+24. **Translation speed is a bacterial average.** syn3A's own elongation
+    rate is not measured; 12 aa/s is in the 10–20 aa/s bacterial range.
+
 ## Data sources
 
 - Protein copy numbers: Breuer et al. 2019, *eLife* 8:e36842 (proteomics,
@@ -212,8 +287,9 @@ held back.
   185:345. `tools/check_syn3a.py` checks every kcat, Km and mRNA count in
   `src/data/syn3a.js` against those files.
 - Ribosomes (503), RNA polymerases (187), cell radius (200 nm), mRNA
-  half-life (~2 min): Thornburg et al. 2022. Transcription 25 nt/s:
-  Thornburg et al. 2019.
+  half-life (~2 min), degradosomes (120): Thornburg et al. 2022.
+  Transcription 25 nt/s: Thornburg et al. 2019. Doubling time 105 min:
+  Breuer et al. 2019.
 - GFP cytoplasmic diffusion: Elowitz et al. 1999, *J. Bacteriol.* 181:197.
 
 ## Layout
