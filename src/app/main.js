@@ -8,7 +8,7 @@ import { cssVar, fmtNum } from './charts.js';
 
 const MILESTONES = [
   { id: 'm1', n: 1, label: 'Test tube', ready: true },
-  { id: 'm2', n: 2, label: 'Glycolysis', ready: false },
+  { id: 'm2', n: 2, label: 'Glycolysis', ready: true },
   { id: 'm3', n: 3, label: 'Central dogma', ready: false },
   { id: 'm4', n: 4, label: 'Whole cell', ready: false },
 ];
@@ -25,7 +25,7 @@ const app = {
   layers: {},
   history: {},
   running: true,
-  scenario: 'm1',
+  scenario: null,
   seed: 1,
   dirtyBg: true,
   view: null,
@@ -308,6 +308,9 @@ new MutationObserver(() => { app.dirtyBg = true; }).observe(document.documentEle
   app.renderer = made.renderer;
   if (made.canvas !== canvas) { canvas = made.canvas; canvas.addEventListener('click', onCanvasClick); resize(); }
   window.addEventListener('resize', resize);
-  load('m1');
+  // Open on the newest milestone, or the one named in the link (#m1 ...).
+  const ready = MILESTONES.filter((m) => m.ready);
+  const named = ready.find((m) => '#' + m.id === location.hash);
+  load((named || ready[ready.length - 1]).id);
   requestAnimationFrame(frameLoop);
 })();

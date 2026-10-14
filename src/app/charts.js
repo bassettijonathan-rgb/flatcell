@@ -128,3 +128,62 @@ export function drawXY(canvas, { xMax, yMax, xMin = 0, yMin = 0, xLabel, yLabel,
   ctx.strokeStyle = ink;
   ctx.beginPath(); ctx.moveTo(L + 0.5, T); ctx.lineTo(L + 0.5, T + ph + 0.5); ctx.lineTo(L + pw, T + ph + 0.5); ctx.stroke();
 }
+
+// Horizontal bars, one row each: { label, value, track?, ref?, color, note? }.
+// track draws a faint full-capacity bar behind the value, ref a tick mark.
+// With log: [min, max] the scale is logarithmic.
+export function drawBars(canvas, { rows, max, log, fmt = fmtNum, unit = '' }) {
+  const rowH = 20;
+  canvas.style.height = `${rows.length * rowH + 30}px`;
+  const { ctx, w, h } = setupCanvas(canvas);
+  const ink = cssVar('--ink'), muted = cssVar('--muted'), grid = cssVar('--line'), font = cssVar('--font-data');
+  ctx.clearRect(0, 0, w, h);
+  const L = 74, R = 96, T = 4;
+  const pw = Math.max(20, w - L - R);
+  const X = log
+    ? (v) => L + Math.max(0, Math.min(1, Math.log(Math.max(v, log[0]) / log[0]) / Math.log(log[1] / log[0]))) * pw
+    : (v) => L + Math.max(0, Math.min(1, v / max)) * pw;
+  ctx.font = `11px ${font}`;
+  ctx.textBaseline = 'middle';
+  // grid
+  ctx.strokeStyle = grid;
+  ctx.fillStyle = muted;
+  ctx.textAlign = 'center';
+  const ticks = log ? decades(log[0], log[1]) : [0, max / 2, max];
+  for (const v of ticks) {
+    const x = Math.round(X(v)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + rows.length * rowH); ctx.stroke();
+    ctx.fillText(fmt(v), x, T + rows.length * rowH + 10);
+  }
+  if (unit) { ctx.textAlign = 'right'; ctx.fillText(unit, L + pw, T + rows.length * rowH + 22); }
+  rows.forEach((r, k) => {
+    const y = T + k * rowH;
+    ctx.textAlign = 'right';
+    ctx.fillStyle = ink;
+    ctx.fillText(r.label, L - 8, y + rowH / 2);
+    if (r.track != null) {
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = r.color;
+      ctx.fillRect(L, y + 4, X(r.track) - L, rowH - 8);
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = r.color;
+    ctx.fillRect(L, y + 4, Math.max(1, X(r.value) - L), rowH - 8);
+    if (r.ref != null) {
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 2;
+      const x = Math.round(X(r.ref));
+      ctx.beginPath(); ctx.moveTo(x, y + 2); ctx.lineTo(x, y + rowH - 2); ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+    ctx.textAlign = 'left';
+    ctx.fillStyle = muted;
+    ctx.fillText(r.note ?? fmt(r.value), L + pw + 6, y + rowH / 2);
+  });
+}
+
+function decades(a, b) {
+  const out = [];
+  for (let e = Math.ceil(Math.log10(a)); e <= Math.floor(Math.log10(b)) + 1e-9; e++) out.push(10 ** e);
+  return out;
+}
