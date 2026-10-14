@@ -16,8 +16,8 @@ page that runs as a claude.ai Artifact, down to phone width.
 | | Scenario | Status |
 |---|---|---|
 | 1 | **Test tube**: one syn3A enzyme and its substrate. Michaelis–Menten curves emerge and match theory; crowding sliders show the slowdown. | done |
-| 2 | **Glycolysis box**: the pathway from glucose to lactate making ATP, with a channelling demo (clustered vs spread enzymes). | next |
-| 3 | **Central dogma**: transcription and translation with stochastic bursts in live copy numbers. | planned |
+| 2 | **Glycolysis box**: the pathway from glucose to lactate making ATP, with a channelling demo (clustered vs spread enzymes). | done |
+| 3 | **Central dogma**: transcription and translation with stochastic bursts in live copy numbers. | next |
 | 4 | **Whole cell**: grows its membrane, copies its DNA and divides at least once. | planned |
 
 ## Running it
@@ -32,7 +32,8 @@ node test/browser/artifact-check.mjs   # needs Playwright; boots the built page 
 python3 tools/check_syn3a.py DATA_DIR  # checks src/data/syn3a.js against the source tables
 ```
 
-`?renderer=webgpu|webgl|canvas` forces a drawing backend.
+`?renderer=webgpu|webgl|canvas` forces a drawing backend. The page opens on the
+newest milestone; `#m1`, `#m2` … in the link open a specific one.
 
 ## How the model works
 
@@ -96,6 +97,46 @@ crowding slow a reaction, switch **Kinetics** to *Diffusion-limited enzyme*
 40% crowding the low-substrate turnover drops by about 30%, and the test
 suite checks it drops by more than 15%.
 
+## Milestone 2 results
+
+The glycolysis box is a 10 nm slab of cytoplasm about the size of a syn3A
+cross-section (1,496 sites inside a membrane rim). Its eleven enzymes, from
+the PTS glucose transporter to lactate dehydrogenase, are particles at
+syn3A copy numbers scaled to the slab (60 GapDH, 49 Ldh, 45 Eno … 10 FbaA;
+23 PTS in the membrane), and the rest of the proteome is 520 inert lumps plus
+20 ribosomes. The 15 metabolites start at the Thornburg et al. 2022 levels.
+Nothing about the pathway's flux is set: each step's rate is counted from
+catalytic events.
+
+What emerges, and what `test/glycolysis.test.mjs` checks:
+
+- **ATP is made.** PGK and pyruvate kinase make more ATP than PfkA spends;
+  at the default demand (a quarter of the ATP pool spent per second) ATP
+  holds near 3.7 mM.
+- **Aldolase is the bottleneck.** FbaA (10 copies, kcat 60 /s) runs at its
+  full capacity while every other step has slack, so fructose
+  1,6-bisphosphate piles up above it and PEP runs nearly dry below. Two ATP
+  per glucose through ten aldolases caps ATP supply near 1.3 mM/s, so an ATP
+  demand above about 0.35 /s slowly drains the pool.
+- **Pools are conserved.** ATP + ADP and NAD⁺ + NADH, counting what enzymes
+  hold, stay constant to 1e-9.
+
+**Channelling.** The second scene isolates GapDH → 1,3-bisphosphoglycerate →
+Pgk at syn3A copy numbers, with 1,3-BPG lost to other fates at a set rate.
+Clustering the enzymes in one patch helps only when the intermediate is lost
+within roughly the cluster's size (share of 1,3-BPG reaching Pgk, 0.6 s of
+cell time each, ~2,700 molecules made):
+
+| 1,3-BPG lost at | 1,3-BPG diffusion | spread | clustered |
+|---|---|---|---|
+| 300 /s (range 1.6 µm) | 200 µm²/s | 52% | 51% |
+| 20,000 /s (range 200 nm) | 200 µm²/s | 2.6% | 5.1% |
+| 3,000 /s (range 80 nm) | 5 µm²/s | 12% | 18% |
+
+So proximity doubles what a free, fast metabolite delivers, but most of it
+still escapes: proximity alone is a weak channel unless the intermediate is
+held back.
+
 ## Every simplification
 
 1. **Two dimensions.** The cell is a 10 nm slab, not a 400 nm sphere. Copy
@@ -137,10 +178,29 @@ suite checks it drops by more than 15%.
 10. **Particles hop on a grid.** Directions are the four lattice axes and
     collisions are site occupancy, not shapes. Slots let up to four small
     proteins share a 10 nm site.
-11. **Time is real in milestone 1.** The test tube runs at 4 µs per step,
+11. **Time is real in milestones 1 and 2.** The test tube runs at 4 µs per step,
     so the page shows slow motion. Later milestones compress slow processes
     (transcription, translation, replication, growth) relative to metabolism
     and the speed control shows by how much.
+12. **Glycolysis runs forward only.** Every step is irreversible, so
+    near-equilibrium steps (Pgi, TpiA, Pgm, Eno) cannot run backwards and
+    there is no allosteric control (PfkA is not inhibited by ATP). This is
+    why fructose 1,6-bisphosphate can pile up behind aldolase.
+13. **Multi-substrate enzymes bind in a fixed order** and each binding step
+    is calibrated as if its substrate were the only one, so their apparent
+    Km values are approximate.
+14. **One particle per counted protein.** Copy numbers count polypeptides;
+    each particle is one of them with the measured kcat, but it diffuses
+    with the mass of the native oligomer.
+15. **Left out of the box:** phosphate (GapDH's third substrate), the
+    PTS's own phosphorelay (folded into one step with a glucose saturation
+    factor, Km 0.1 mM), every pathway that branches off glycolysis, and
+    lactate export, which is a first-order leak at 5 /s.
+16. **ATP demand is a first-order sink** standing for everything else the
+    cell spends ATP on, until milestones 3 and 4 spend it for real.
+17. **The channelling loss is a free parameter.** 1,3-BPG's real competing
+    fates are slow; the loss rate is a knob that sets how far it travels,
+    and the clustered enzymes are held still as a scaffold would hold them.
 
 ## Data sources
 
@@ -161,7 +221,7 @@ suite checks it drops by more than 15%.
 ```
 src/core/       lattice world, particles, fields, units, RNG
 src/data/       syn3A gene and reaction tables
-src/scenarios/  one module per milestone, plus shared helpers
+src/scenarios/  one module per milestone (testtube, glycolysis, ...) plus shared helpers
 src/worker/     simulation host (runs in a Web Worker or on the page)
 src/app/        page: renderers, charts, panels
 test/           node:test suites; test/browser has page checks

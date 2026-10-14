@@ -140,3 +140,5 @@ button, input, select { font: inherit; color: inherit; }
 .seedrow input { width: 90px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-family: var(--font-data); }
 .fp { font-family: var(--font-data); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.chart-title { font-size: 12px; font-weight: 600; color: var(--ink); margin: 14px 0 4px; }
+.chart-title small { font-weight: 400; color: var(--muted); }

@@ -91,16 +91,16 @@ export class World {
     const dt = this.dt;
     const n = subs.length;
     if (n > SUB_SLOTS) throw new Error(`at most ${SUB_SLOTS} substrates per enzyme`);
-    const fastest = Math.max(...koff.map((k) => (k + kcat) * dt), ...kSite.map((k) => k * 1e-3 * dt * MM_PER_MOLECULE));
-    const sub = Math.max(1, Math.ceil(fastest / 0.2));
+    // The chain runs in continuous time inside a step (any number of
+    // transitions), so one substep suffices; more only refresh the view of
+    // the field, which is static between field updates anyway.
+    const sub = 1;
     this.species[spIndex].enzyme = {
       subs: Int32Array.from(subs),
       prods: Int32Array.from(prods),
       kSiteDt: Float64Array.from(kSite.map((k) => fix(k * 1e-3 * dt))), // per mM per step
       koffDt: Float64Array.from(koff.map((k) => fix(k * dt))),
       kcatDt: fix(kcat * dt),
-      // Unimolecular steps faster than ~0.2 per step are resolved with
-      // substeps, so very fast binding/unbinding keeps the right balance.
       sub,
       // Capture rate (per substep) of the substrate visible in the site.
       lam: Float64Array.from(kSite.map((k) => fix(k * 1e-3 * dt * MM_PER_MOLECULE) / sub)),
@@ -332,6 +332,9 @@ export class World {
       if (ez.decayVersion !== FS.hideVersion) {
         for (let j = 0; j < ez.n; j++) ez.decay[j] = probFromRate(ez.lam[j] * (1 - hide[ez.subs[j]]));
         ez.decayVersion = FS.hideVersion;
+        // Whole-substep transition probabilities, the common case.
+        ez.pOff = ez.koffDt.map((k) => probFromRate(k / ez.sub));
+        ez.pFull = probFromRate((ez.kcatDt + ez.koffDt[ez.n - 1]) / ez.sub);
       }
       const s = pos[i];
       let st = state[i];
@@ -344,8 +347,7 @@ export class World {
             // Fully loaded complex: turnover or loss of the last substrate.
             const kc = ez.kcatDt * inv, ko = ez.koffDt[st - 1] * inv;
             const r = rng.next();
-            const x = (kc + ko) * rem;
-            if (r >= probFromRate(x)) break;
+            if (r >= (rem === 1 ? ez.pFull : probFromRate((kc + ko) * rem))) break;
             rem -= negLog(1 - r) / (kc + ko);
             if (rng.next() * (kc + ko) < kc) {
               for (let j = 0; j < ez.prods.length; j++) FS.release(ez.prods[j], s, q);
@@ -368,7 +370,7 @@ export class World {
           if (st > 0) {
             const ko = ez.koffDt[st - 1] * inv;
             const r = rng.next();
-            if (r < probFromRate(ko * rem)) tOff = negLog(1 - r) / ko;
+            if (r < (rem === 1 ? ez.pOff[st - 1] : probFromRate(ko * rem))) tOff = negLog(1 - r) / ko;
           }
           const fk = ez.subs[st];
           const c = F[fk][s] - fresh[fk][s];
@@ -379,11 +381,11 @@ export class World {
             if (nd <= 0) { nd = q * negLog(1 - rng.next()); need[slot] = nd; }
             const keep = 1 - hide[fk];
             const want = (nd - credit[slot]) * keep / c; // share of visible c
+            // Crossing within the rest of the substep iff want is below the
+            // share captured by then; only then is the exact time needed.
             if (want <= 0) tBind = 0;
-            else if (want < 1) {
-              const lam = ez.lam[st] * keep;
-              const t = negLog(1 - want) / lam;
-              if (t < rem) tBind = t;
+            else if (want < (rem === 1 ? ez.decay[st] : probFromRate(ez.lam[st] * keep * rem))) {
+              tBind = Math.min(rem, negLog(1 - want) / (ez.lam[st] * keep));
             }
           }
           const t = Math.min(tOff, tBind, rem);

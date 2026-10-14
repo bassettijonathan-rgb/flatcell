@@ -459,10 +459,17 @@ class CanvasRenderer {
       const sp = this.species[parts[k * 4 + 2]];
       if (!sp) continue;
       const fl = parts[k * 4 + 3];
-      ctx.fillStyle = fl & 1 ? '#fffbe8' : sp.fill;
+      ctx.fillStyle = sp.fill;
       ctx.beginPath();
       ctx.arc(parts[k * 4], parts[k * 4 + 1], sp.r, 0, 6.2832);
       ctx.fill();
+      if (fl & 1) {
+        // busy: bright core, as in the GPU renderers
+        ctx.fillStyle = '#fffbe8';
+        ctx.beginPath();
+        ctx.arc(parts[k * 4], parts[k * 4 + 1], sp.r * 0.45, 0, 6.2832);
+        ctx.fill();
+      }
       if (fl & 2) {
         ctx.strokeStyle = this.ring;
         ctx.lineWidth = 0.15;
