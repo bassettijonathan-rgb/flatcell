@@ -1,0 +1,13 @@
+{
+  "name": "flatcell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A 2D browser simulation of the minimal bacterium JCVI-syn3A, built from Brownian encounters.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "build": "node tools/build-artifact.mjs --standalone"
+  },
+  "engines": { "node": ">=20" }
+}
