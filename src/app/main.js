@@ -10,7 +10,7 @@ const MILESTONES = [
   { id: 'm1', n: 1, label: 'Test tube', ready: true },
   { id: 'm2', n: 2, label: 'Glycolysis', ready: true },
   { id: 'm3', n: 3, label: 'Central dogma', ready: true },
-  { id: 'm4', n: 4, label: 'Whole cell', ready: false },
+  { id: 'm4', n: 4, label: 'Whole cell', ready: true },
 ];
 
 const $ = (id) => document.getElementById(id);
